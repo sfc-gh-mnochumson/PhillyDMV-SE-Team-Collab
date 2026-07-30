@@ -373,32 +373,38 @@ limit 15
 ;
 
 
--- Query 6: AI spike investigation — function/model/source breakdown for AI-feature spikes
--- Use this instead of Query 5 when the anomaly feature is AI_FUNCTIONS, AI_SERVICES,
--- CORTEX_AGENTS, CORTEX_SEARCH, or SNOWFLAKE_INTELLIGENCE.
--- Requires access to METERING2_SAFE_ALL (may need SNOWFLAKE_INTERNAL_SE role or similar).
+-- Query 6: AI spike investigation — METERING2_SAFE_ALL.METERING.AI_SERVICES_CORTEX_FUNCTIONS_METERING_V
+-- Use when the anomaly feature is AI_FUNCTIONS, AI_SERVICES, CORTEX_AGENTS, etc.
+-- metadata:role_names contains USER$<email> to identify who ran the queries.
+-- metadata:function_name = AI_CLASSIFY, AI_COMPLETE, AI_EXTRACT, etc.
+-- metadata:model_name = llama3.1-8b, claude-haiku-4-5, arctic-extract, etc.
 -- Replace {account_id}, {deployment}, {spike_date_start}, {spike_date_end} with actual values.
+-- account_id and deployment come from the Step 2d anomaly results (dim_snowflake_accounts join).
 select
-    ai.ds                                         as usage_date
-    ,ai.source                                    -- CORTEX_FUNCTIONS, CORTEX_AGENTS_SI, etc.
-    ,ai.function_name                             -- COMPLETE, AI_EXTRACT, AI_CLASSIFY, CORTEX_AGENT, etc.
-    ,ai.model_name                                -- llama3.1-70b, claude-3-5-sonnet, etc.
-    ,ai.feature                                   -- Cortex Code, AISQL, Cortex Agents, etc.
-    ,count(*)                                     as call_count
-    ,sum(ai.credits)                              as total_credits
-    ,sum(ai.metric_count)                         as total_tokens
-    ,max(ai.metric_unit)                          as token_unit
-from SNOWSCIENCE.LLM.AI_SERVICES_CORTEX_CONSUMPTION_W_FEATURE_MAPPING ai
-where ai.account_id  = {account_id}
-  and ai.deployment  = '{deployment}'
-  and ai.ds between '{spike_date_start}' and '{spike_date_end}'
-group by 1, 2, 3, 4, 5
+    m.usage_time::date                                          as usage_date
+    -- extract user email from role_names: look for USER$<email> token
+    ,trim(regexp_substr(
+        m.metadata:role_names::string,
+        'USER\\$([^,]+)',
+        1, 1, 'e', 1
+     ))                                                         as user_email
+    ,m.metadata:function_name::string                          as ai_function   -- AI_CLASSIFY, AI_COMPLETE, etc.
+    ,m.metadata:model_name::string                             as model         -- llama3.1-8b, arctic-extract, etc.
+    ,count(distinct m.metadata:query_id::string)               as query_count
+    ,sum(m.credits)                                            as total_credits
+    ,sum(m.quantity)                                           as total_tokens
+    ,max(m.unit)                                               as token_unit
+from METERING2_SAFE_ALL.METERING.AI_SERVICES_CORTEX_FUNCTIONS_METERING_V m
+where m.account_id  = {account_id}
+  and m.deployment  = '{deployment}'
+  and m.usage_time::date between '{spike_date_start}' and '{spike_date_end}'
+group by 1, 2, 3, 4
 order by total_credits desc
 limit 20
 ;
 
 
--- Query 6b: Cortex Agent credits fallback — use if Query 6 is not accessible
+-- Query 6b: Cortex Agent credits fallback
 -- Covers only Cortex Agents API calls (not SQL AI functions).
 -- account_id and deployment from dim_snowflake_accounts.
 select

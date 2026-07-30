@@ -124,13 +124,24 @@ After Step 2d returns results, investigate any spike where `spike_ratio ≥ 5×`
 `CORTEX_SEARCH`, or `SNOWFLAKE_INTELLIGENCE`):
 
 Run **Query 6** from `snowhouse_queries.sql` on the **snowhouse** connection.
-This queries `SNOWSCIENCE.LLM.AI_SERVICES_CORTEX_CONSUMPTION_W_FEATURE_MAPPING` and
-groups by `source`, `function_name`, `model_name`, and `feature` to show exactly
-which AI functions were called and on which models.
+This queries `METERING2_SAFE_ALL.METERING.AI_SERVICES_CORTEX_FUNCTIONS_METERING_V`
+directly — the authoritative AI inference metering table — and returns actual token
+and credit costs broken down by user, function, and model.
 
-> **If Query 6 fails** (error on `METERING2_SAFE_ALL`): run **Query 6b** instead,
-> which uses `CORTEX_AGENT_DAY_CREDITS_TOOL_FACT` — this covers Cortex Agent API
-> calls only, not SQL AI functions. Note the limitation in the brief.
+User identity is extracted from `metadata:role_names` using a regex on `USER$<email>`.
+Key output columns:
+- `user_email` — who ran the queries (from `USER$` token in role_names)
+- `ai_function` — `AI_CLASSIFY`, `AI_COMPLETE`, `AI_EXTRACT`, etc.
+- `model` — `llama3.1-8b`, `arctic-extract`, `claude-haiku-4-5`, etc.
+- `total_credits` — actual AI inference credits (not compute warehouse credits)
+- `total_tokens` — token volume processed
+
+> **Do NOT use `SNOWHOUSE_IMPORT.PROD.JOB_ETL_V`** for user lookups — it's a massive
+> union view that will time out.
+
+If Query 6 returns no rows (no AI inference usage in the metering table), run
+**Query 6b** (`CORTEX_AGENT_DAY_CREDITS_TOOL_FACT`) as a fallback for Cortex Agent
+API call credits.
 
 Key columns to interpret:
 - `source` — `CORTEX_FUNCTIONS` (SQL AI function calls) or `CORTEX_AGENTS_SI` (Agent API)
