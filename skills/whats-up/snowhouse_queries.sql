@@ -345,3 +345,74 @@ order by
     ,spike_amount desc
 ;
 
+
+-- Query 5: Spike investigation — top jobs by credits for a specific account on spike dates
+-- Run this for each significant spike (ratio ≥ 5× or amount ≥ $500) found in Query 4.
+-- Replace {account_id}, {deployment}, {spike_date_start}, {spike_date_end} with actual values.
+-- account_id and deployment come from dim_snowflake_accounts joined via dim_customer_current_user.
+select
+    coalesce(w.warehouse_name, 'unknown (id=' || j.warehouse_id || ')')  as warehouse_name
+    ,j.tool
+    ,j.client
+    ,j.tag
+    ,j._job_end_time::date                                                as job_date
+    ,count(*)                                                             as job_count
+    ,round(sum(j.total_credits), 2)                                       as total_credits
+from SNOWSCIENCE.JOB_ANALYTICS.JOB_CREDITS j
+left join FINANCE.CUSTOMER.WAREHOUSE_COMPUTE w
+    on j.warehouse_id = w.warehouse_id
+    and j._job_end_time::date = w.usage_date
+    and j.account_id = w.snowflake_account_id
+where j.account_id = {account_id}
+  and j.deployment = '{deployment}'
+  and j._job_end_time::date between '{spike_date_start}' and '{spike_date_end}'
+  and j.is_internal = false
+group by 1, 2, 3, 4, 5
+order by total_credits desc
+limit 15
+;
+
+
+-- Query 6: AI spike investigation — function/model/source breakdown for AI-feature spikes
+-- Use this instead of Query 5 when the anomaly feature is AI_FUNCTIONS, AI_SERVICES,
+-- CORTEX_AGENTS, CORTEX_SEARCH, or SNOWFLAKE_INTELLIGENCE.
+-- Requires access to METERING2_SAFE_ALL (may need SNOWFLAKE_INTERNAL_SE role or similar).
+-- Replace {account_id}, {deployment}, {spike_date_start}, {spike_date_end} with actual values.
+select
+    ai.ds                                         as usage_date
+    ,ai.source                                    -- CORTEX_FUNCTIONS, CORTEX_AGENTS_SI, etc.
+    ,ai.function_name                             -- COMPLETE, AI_EXTRACT, AI_CLASSIFY, CORTEX_AGENT, etc.
+    ,ai.model_name                                -- llama3.1-70b, claude-3-5-sonnet, etc.
+    ,ai.feature                                   -- Cortex Code, AISQL, Cortex Agents, etc.
+    ,count(*)                                     as call_count
+    ,sum(ai.credits)                              as total_credits
+    ,sum(ai.metric_count)                         as total_tokens
+    ,max(ai.metric_unit)                          as token_unit
+from SNOWSCIENCE.LLM.AI_SERVICES_CORTEX_CONSUMPTION_W_FEATURE_MAPPING ai
+where ai.account_id  = {account_id}
+  and ai.deployment  = '{deployment}'
+  and ai.ds between '{spike_date_start}' and '{spike_date_end}'
+group by 1, 2, 3, 4, 5
+order by total_credits desc
+limit 20
+;
+
+
+-- Query 6b: Cortex Agent credits fallback — use if Query 6 is not accessible
+-- Covers only Cortex Agents API calls (not SQL AI functions).
+-- account_id and deployment from dim_snowflake_accounts.
+select
+    ca.ds                                         as usage_date
+    ,ca.application_name
+    ,ca.tool
+    ,ca.segment                                   -- "Orchestration Token Credits", "Analyst Warehouse Credits"
+    ,sum(ca.credits)                              as total_credits
+from SNOWSCIENCE.LLM.CORTEX_AGENT_DAY_CREDITS_TOOL_FACT ca
+where ca.account_id  = {account_id}
+  and ca.deployment  = '{deployment}'
+  and ca.ds between '{spike_date_start}' and '{spike_date_end}'
+group by 1, 2, 3, 4
+order by total_credits desc
+limit 20
+;
+
