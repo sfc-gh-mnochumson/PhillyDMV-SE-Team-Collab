@@ -107,13 +107,51 @@ New warehouses = a workload just started. Inactive warehouses = something shut d
 ### Step 2d: Usage anomalies
 
 Query 4 from `snowhouse_queries.sql` — UNPIVOTs all service revenue columns and
-compares yesterday against the prior 7-day average per (account, feature). Results
-are filtered to spikes ≥$100 above average AND ≥2× average AND ≥$50 absolute.
+compares each day in the last 7 days against its own rolling 7-day prior average.
+Results are filtered to spikes ≥$100 above average AND ≥2× average AND ≥$50 absolute.
 
-`spike_amount` = yesterday minus average. `spike_ratio` = multiplier vs average.
+`spike_amount` = value minus prior average. `spike_ratio` = multiplier vs average.
 
 If results are returned, list them prominently — these are runaway jobs, accidental
 loops, or unexpectedly expensive queries the customer may not know about yet.
+
+### Step 2e: Investigate significant spikes
+
+After Step 2d returns results, investigate any spike where `spike_ratio ≥ 5×` OR
+`spike_amount ≥ $500`. Route to the appropriate query based on the spike feature type.
+
+**For AI-feature spikes** (feature is `AI_FUNCTIONS`, `AI_SERVICES`, `CORTEX_AGENTS`,
+`CORTEX_SEARCH`, or `SNOWFLAKE_INTELLIGENCE`):
+
+Run **Query 6** from `snowhouse_queries.sql` on the **snowhouse** connection.
+This queries `SNOWSCIENCE.LLM.AI_SERVICES_CORTEX_CONSUMPTION_W_FEATURE_MAPPING` and
+groups by `source`, `function_name`, `model_name`, and `feature` to show exactly
+which AI functions were called and on which models.
+
+> **If Query 6 fails** (error on `METERING2_SAFE_ALL`): run **Query 6b** instead,
+> which uses `CORTEX_AGENT_DAY_CREDITS_TOOL_FACT` — this covers Cortex Agent API
+> calls only, not SQL AI functions. Note the limitation in the brief.
+
+Key columns to interpret:
+- `source` — `CORTEX_FUNCTIONS` (SQL AI function calls) or `CORTEX_AGENTS_SI` (Agent API)
+- `function_name` — `COMPLETE`, `AI_EXTRACT`, `AI_CLASSIFY`, `CORTEX_AGENT`, etc.
+- `model_name` — which LLM was called (claude, llama, snowflake-arctic, etc.)
+- `feature` — `AISQL` (SQL functions), `Cortex Code` (CoCo), `Cortex Agents`, etc.
+- `total_tokens` — volume of inference work
+
+**For COMPUTE / SERVERLESS / SNOWPIPE / other non-AI spikes**:
+
+Run **Query 5** from `snowhouse_queries.sql` on the **snowhouse** connection.
+Groups `JOB_CREDITS` by warehouse name, tool, client, and tag to identify the workload.
+
+---
+
+**Synthesize into a one-line "Likely cause"** for the anomaly table:
+- AI example: "200 `CORTEX_AGENT` calls via `CORTEX_AGENTS_SI`, claude-3-5-sonnet, 1.2M tokens — CI eval runs"
+- Compute example: "DBT dag `ams_dag_local` ran 7,811 jobs on `AMS_DATALAKE_ICE_WH_STANDARD` (254 credits)"
+- Unknown: "Cause unknown — worth asking the customer"
+
+**Cap at 5 investigations per run** — prioritize by `spike_amount` descending.
 
 ### Part 2 Output
 
@@ -134,9 +172,9 @@ loops, or unexpectedly expensive queries the customer may not know about yet.
 | ...     | ...       | New / Inactive | ... |
 
 ### ⚠️ Usage Anomalies
-| Account | Feature | Yesterday | 7-Day Avg | Spike |
-|---------|---------|-----------|-----------|-------|
-| ...     | ...     | $X        | $X        | +$X (Nx) |
+| Account | Date | Feature | Spike | Ratio | Likely Cause |
+|---------|------|---------|-------|-------|--------------|
+| ...     | ...  | ...     | +$X   | N×    | [from Glean or "Unknown — ask customer"] |
 ```
 
 If no notable changes across any account, output:
