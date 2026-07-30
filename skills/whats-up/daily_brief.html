@@ -8,20 +8,20 @@
   <script type="application/json" id="snowflake-report-metadata">
   {
     "generated": "2026-07-30",
-    "intent": "Daily SE briefing — My Day + Customer Health with spike root-cause analysis",
+    "intent": "Daily SE briefing with AI spike root-cause via METERING2_SAFE_ALL",
     "sections": [
       { "id": "my-day", "title": "My Day",
         "dataSources": [
-          { "type": "query", "connection": "snowhouse", "sql": "SALES.SALES_ENGINEERING.EVENTS — today's meetings for William Wash" },
+          { "type": "query", "connection": "snowhouse", "sql": "SALES.SALES_ENGINEERING.EVENTS — today's meetings" },
           { "type": "glean", "prompt": "Open action items for William Wash past 7 days" }
         ] },
       { "id": "customer-health", "title": "Customer Health",
         "dataSources": [
-          { "type": "query", "connection": "snowhouse", "sql": "SNOWFLAKE_ACCOUNT_REVENUE_ETM — MoM+YoY last 3 months + prior year" },
-          { "type": "query", "connection": "snowhouse", "sql": "SNOWFLAKE_ACCOUNT_REVENUE_ETM UNPIVOT — rolling 7-day anomaly detection" },
-          { "type": "query", "connection": "snowhouse", "sql": "SNOWSCIENCE.JOB_ANALYTICS.JOB_CREDITS — spike root-cause investigation" },
-          { "type": "query", "connection": "snowhouse", "sql": "all_live_agents — new Cortex Agents last 7 days" },
-          { "type": "query", "connection": "snowhouse", "sql": "warehouse_compute — new/inactive warehouses last 30 days" }
+          { "type": "query", "connection": "snowhouse", "sql": "SNOWFLAKE_ACCOUNT_REVENUE_ETM — MoM+YoY" },
+          { "type": "query", "connection": "snowhouse", "sql": "SNOWFLAKE_ACCOUNT_REVENUE_ETM UNPIVOT — rolling 7-day anomaly" },
+          { "type": "query", "connection": "snowhouse", "sql": "METERING2_SAFE_ALL.METERING.AI_SERVICES_CORTEX_FUNCTIONS_METERING_V — AI spike user attribution" },
+          { "type": "query", "connection": "snowhouse", "sql": "JOB_ANALYTICS.JOB_CREDITS — compute spike root-cause" },
+          { "type": "query", "connection": "snowhouse", "sql": "all_live_agents + warehouse_compute" }
         ] }
     ]
   }
@@ -29,63 +29,56 @@
   <style>
     :root { color-scheme: light dark; }
     *, *::before, *::after { box-sizing: border-box; }
-    body { font-family: -apple-system, system-ui, "Segoe UI", sans-serif; font-size: 14px; line-height: 1.5; max-width: 980px; margin: 0 auto; padding: 28px 24px 60px; background: light-dark(#f8fafc, #0f172a); color: light-dark(#1e293b, #cbd5e1); }
-    .header { display: flex; align-items: center; gap: 14px; margin-bottom: 32px; padding-bottom: 20px; border-bottom: 2px solid light-dark(#e2e8f0, #1e293b); }
-    .header-icon { width: 44px; height: 44px; background: #29B5E8; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 22px; flex-shrink: 0; }
-    .header h1 { margin: 0; font-size: 22px; font-weight: 700; color: light-dark(#0f172a, #f1f5f9); }
-    .subtitle { margin: 0; font-size: 13px; color: light-dark(#64748b, #94a3b8); }
-    .section-header { display: flex; align-items: center; gap: 10px; margin: 36px 0 14px; }
-    .section-header h2 { margin: 0; font-size: 17px; font-weight: 700; color: light-dark(#0f172a, #f1f5f9); }
-    .badge { font-size: 11px; font-weight: 600; padding: 2px 9px; border-radius: 999px; }
-    .b-blue   { background: light-dark(#e0f2fe, #0c4a6e); color: light-dark(#0369a1, #7dd3fc); }
-    .b-green  { background: light-dark(#dcfce7, #14532d); color: light-dark(#166534, #86efac); }
-    .b-amber  { background: light-dark(#fef3c7, #78350f); color: light-dark(#92400e, #fcd34d); }
-    .b-red    { background: light-dark(#fee2e2, #7f1d1d); color: light-dark(#991b1b, #fca5a5); }
-    .b-purple { background: light-dark(#ede9fe, #2e1065); color: light-dark(#6d28d9, #c4b5fd); }
-    .b-gray   { background: light-dark(#f1f5f9, #334155); color: light-dark(#475569, #94a3b8); }
-    .card { background: light-dark(#fff, #1e293b); border: 1px solid light-dark(#e2e8f0, #334155); border-radius: 10px; padding: 16px 18px; margin-bottom: 12px; }
-    .card-title { font-weight: 600; font-size: 14px; color: light-dark(#0f172a, #f1f5f9); margin: 0 0 4px; }
-    .card-meta  { font-size: 12px; color: light-dark(#64748b, #94a3b8); margin: 0 0 10px; }
-    .meeting-time { font-weight: 700; font-size: 15px; color: #29B5E8; margin-right: 6px; }
-    .attendee-list { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
-    .attendee-chip { font-size: 11px; padding: 2px 9px; border-radius: 999px; background: light-dark(#f1f5f9, #334155); color: light-dark(#475569, #94a3b8); }
-    .action-list { list-style: none; padding: 0; margin: 0; }
-    .action-list li { display: flex; gap: 10px; padding: 9px 0; border-bottom: 1px solid light-dark(#f1f5f9, #1e293b); align-items: flex-start; }
-    .action-list li:last-child { border-bottom: none; }
-    .checkbox { width: 16px; height: 16px; margin-top: 2px; flex-shrink: 0; border: 2px solid light-dark(#cbd5e1, #475569); border-radius: 4px; }
-    .action-source { font-size: 11px; color: light-dark(#94a3b8, #64748b); margin-top: 2px; }
-    a { color: light-dark(#2563eb, #60a5fa); }
-    table { border-collapse: collapse; width: 100%; }
-    th, td { padding: 8px 12px; text-align: left; border-bottom: 1px solid light-dark(#e2e8f0, #334155); font-size: 13px; }
-    th { font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: light-dark(#64748b, #94a3b8); background: light-dark(#f8fafc, #0f172a); }
-    tr:last-child td { border-bottom: none; }
-    td:first-child { font-weight: 500; color: light-dark(#0f172a, #f1f5f9); }
-    .num { text-align: right !important; }
-    .cause { font-size: 11px; color: light-dark(#475569, #94a3b8); font-style: italic; }
-    .spike-hi  { color: #ef4444; font-weight: 700; }
-    .spike-med { color: #f97316; font-weight: 600; }
-    .anomaly-card { background: light-dark(#fff7ed, #1c0a00); border: 1px solid light-dark(#fed7aa, #431407); border-radius: 10px; overflow: hidden; margin-bottom: 12px; }
-    .anomaly-header { padding: 10px 16px; font-weight: 700; font-size: 13px; color: light-dark(#c2410c, #fb923c); border-bottom: 1px solid light-dark(#fed7aa, #431407); }
-    .anomaly-card table th { background: light-dark(#fff7ed, #1c0a00); }
-    .agent-name { font-family: ui-monospace, "SF Mono", monospace; font-size: 11px; background: light-dark(#f1f5f9, #0f172a); padding: 2px 6px; border-radius: 4px; color: light-dark(#4338ca, #a5b4fc); display: inline-block; margin: 2px 0; }
-    code { font-family: ui-monospace, "SF Mono", monospace; font-size: 11px; background: light-dark(#f1f5f9, #0f172a); padding: 1px 5px; border-radius: 3px; }
-    .sub-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; padding: 8px 14px 4px; color: light-dark(#64748b, #94a3b8); }
-    .mom-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-    @media (max-width: 640px) { .mom-grid { grid-template-columns: 1fr; } }
-    .mom-card { background: light-dark(#fff, #1e293b); border: 1px solid light-dark(#e2e8f0, #334155); border-radius: 10px; padding: 14px 16px; }
-    .mom-acct { font-weight: 700; font-size: 13px; color: light-dark(#0f172a, #f1f5f9); margin-bottom: 8px; }
-    .mom-row { display: flex; justify-content: space-between; align-items: center; padding: 4px 0; border-bottom: 1px solid light-dark(#f1f5f9, #1e293b); font-size: 12px; }
-    .mom-row:last-child { border-bottom: none; }
-    .mom-month { color: light-dark(#64748b, #94a3b8); min-width: 70px; }
-    .mom-rev { font-weight: 600; color: light-dark(#0f172a, #f1f5f9); }
-    .yoy-up   { font-size: 11px; font-weight: 600; color: #22c55e; }
-    .yoy-down { font-size: 11px; font-weight: 600; color: #ef4444; }
-    .note-box { font-size: 11px; font-style: italic; color: light-dark(#94a3b8, #64748b); padding: 4px 0 0; }
-    .highlight-box { background: light-dark(#fffbeb, #1c1917); border-left: 3px solid #f59e0b; border-radius: 0 8px 8px 0; padding: 12px 14px; margin-top: 20px; font-size: 13px; }
-    .highlight-box strong { color: light-dark(#92400e, #fcd34d); }
-    .highlight-box ul { margin: 8px 0 0; padding-left: 18px; }
-    .highlight-box li { margin-bottom: 5px; }
-    hr { border: none; border-top: 1px solid light-dark(#e2e8f0, #1e293b); margin: 28px 0; }
+    body { font-family: -apple-system, system-ui, "Segoe UI", sans-serif; font-size: 14px; line-height: 1.5; max-width: 980px; margin: 0 auto; padding: 28px 24px 60px; background: light-dark(#f8fafc,#0f172a); color: light-dark(#1e293b,#cbd5e1); }
+    .header { display:flex; align-items:center; gap:14px; margin-bottom:32px; padding-bottom:20px; border-bottom:2px solid light-dark(#e2e8f0,#1e293b); }
+    .header-icon { width:44px; height:44px; background:#29B5E8; border-radius:12px; display:flex; align-items:center; justify-content:center; font-size:22px; flex-shrink:0; }
+    .header h1 { margin:0; font-size:22px; font-weight:700; color:light-dark(#0f172a,#f1f5f9); }
+    .subtitle { margin:0; font-size:13px; color:light-dark(#64748b,#94a3b8); }
+    .section-header { display:flex; align-items:center; gap:10px; margin:36px 0 14px; }
+    .section-header h2 { margin:0; font-size:17px; font-weight:700; color:light-dark(#0f172a,#f1f5f9); }
+    .badge { font-size:11px; font-weight:600; padding:2px 9px; border-radius:999px; }
+    .b-blue { background:light-dark(#e0f2fe,#0c4a6e); color:light-dark(#0369a1,#7dd3fc); }
+    .b-green { background:light-dark(#dcfce7,#14532d); color:light-dark(#166534,#86efac); }
+    .b-red { background:light-dark(#fee2e2,#7f1d1d); color:light-dark(#991b1b,#fca5a5); }
+    .b-purple { background:light-dark(#ede9fe,#2e1065); color:light-dark(#6d28d9,#c4b5fd); }
+    .b-gray { background:light-dark(#f1f5f9,#334155); color:light-dark(#475569,#94a3b8); }
+    .card { background:light-dark(#fff,#1e293b); border:1px solid light-dark(#e2e8f0,#334155); border-radius:10px; padding:16px 18px; margin-bottom:12px; }
+    .card-title { font-weight:600; font-size:14px; color:light-dark(#0f172a,#f1f5f9); margin:0 0 4px; }
+    .meeting-time { font-weight:700; font-size:15px; color:#29B5E8; margin-right:6px; }
+    .attendee-list { display:flex; flex-wrap:wrap; gap:6px; margin-top:10px; }
+    .attendee-chip { font-size:11px; padding:2px 9px; border-radius:999px; background:light-dark(#f1f5f9,#334155); color:light-dark(#475569,#94a3b8); }
+    .action-list { list-style:none; padding:0; margin:0; }
+    .action-list li { display:flex; gap:10px; padding:9px 0; border-bottom:1px solid light-dark(#f1f5f9,#1e293b); align-items:flex-start; }
+    .action-list li:last-child { border-bottom:none; }
+    .checkbox { width:16px; height:16px; margin-top:2px; flex-shrink:0; border:2px solid light-dark(#cbd5e1,#475569); border-radius:4px; }
+    .action-source { font-size:11px; color:light-dark(#94a3b8,#64748b); margin-top:2px; }
+    a { color:light-dark(#2563eb,#60a5fa); }
+    table { border-collapse:collapse; width:100%; }
+    th, td { padding:8px 12px; text-align:left; border-bottom:1px solid light-dark(#e2e8f0,#334155); font-size:13px; }
+    th { font-weight:600; font-size:11px; text-transform:uppercase; letter-spacing:0.05em; color:light-dark(#64748b,#94a3b8); background:light-dark(#f8fafc,#0f172a); }
+    tr:last-child td { border-bottom:none; }
+    td:first-child { font-weight:500; color:light-dark(#0f172a,#f1f5f9); }
+    .num { text-align:right !important; }
+    .cause { font-size:11px; color:light-dark(#475569,#94a3b8); font-style:italic; }
+    .spike-hi { color:#ef4444; font-weight:700; }
+    .spike-med { color:#f97316; font-weight:600; }
+    .anomaly-card { background:light-dark(#fff7ed,#1c0a00); border:1px solid light-dark(#fed7aa,#431407); border-radius:10px; overflow:hidden; margin-bottom:12px; }
+    .anomaly-header { padding:10px 16px; font-weight:700; font-size:13px; color:light-dark(#c2410c,#fb923c); border-bottom:1px solid light-dark(#fed7aa,#431407); }
+    .anomaly-card table th { background:light-dark(#fff7ed,#1c0a00); }
+    .agent-name { font-family:ui-monospace,"SF Mono",monospace; font-size:11px; background:light-dark(#f1f5f9,#0f172a); padding:2px 6px; border-radius:4px; color:light-dark(#4338ca,#a5b4fc); display:inline-block; margin:2px 0; }
+    code { font-family:ui-monospace,"SF Mono",monospace; font-size:11px; background:light-dark(#f1f5f9,#0f172a); padding:1px 5px; border-radius:3px; }
+    .sub-label { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; padding:8px 14px 4px; color:light-dark(#64748b,#94a3b8); }
+    .highlight-box { background:light-dark(#fffbeb,#1c1917); border-left:3px solid #f59e0b; border-radius:0 8px 8px 0; padding:12px 14px; margin-top:20px; font-size:13px; }
+    .highlight-box strong { color:light-dark(#92400e,#fcd34d); }
+    .highlight-box ul { margin:8px 0 0; padding-left:18px; }
+    .highlight-box li { margin-bottom:5px; }
+    hr { border:none; border-top:1px solid light-dark(#e2e8f0,#1e293b); margin:28px 0; }
+    .yoy-up { font-size:11px; font-weight:600; color:#22c55e; }
+    .yoy-down { font-size:11px; font-weight:600; color:#ef4444; }
+    .yoy-flat { font-size:11px; font-weight:600; color:light-dark(#94a3b8,#64748b); }
+    .trend-up { color:#22c55e; font-weight:700; font-size:13px; }
+    .trend-down { color:#ef4444; font-weight:700; font-size:13px; }
+    .trend-flat { color:light-dark(#94a3b8,#64748b); font-weight:700; font-size:13px; }
   </style>
 </head>
 <body>
@@ -101,7 +94,7 @@
 <!-- MY DAY -->
 <div class="section-header" id="my-day">
   <h2>My Day</h2>
-  <span class="badge b-blue">1 meeting · 3 tasks</span>
+  <span class="badge b-blue">1 meeting · 4 tasks</span>
 </div>
 
 <div class="card">
@@ -110,7 +103,7 @@
     SNOW &amp; ACN: PPL FinOps Working Session
     <span class="badge b-green" style="margin-left:6px;">30 min</span>
   </div>
-  <div class="card-meta">Proquire Plus Inc. (Accenture / PPL) &nbsp;·&nbsp; On-Demand &nbsp;·&nbsp; accenture.com</div>
+  <div style="font-size:12px;color:light-dark(#64748b,#94a3b8);margin-bottom:8px;">Proquire Plus Inc. (Accenture / PPL) &nbsp;·&nbsp; On-Demand &nbsp;·&nbsp; accenture.com</div>
   <div style="font-size:13px;">Working session on PPL's FinOps implementation with Accenture AI &amp; Data leadership.</div>
   <div class="attendee-list">
     <span class="attendee-chip">Aditi Sharma — MD, AI &amp; Data</span>
@@ -127,21 +120,28 @@
     <li>
       <div class="checkbox"></div>
       <div>
-        <strong>Confirm Norstella MCP workaround</strong> — check if truncated response issue is resolved; advise on "final response only" invocation if not.
-        <div class="action-source"><a href="https://mail.google.com/mail/u/#inbox/19fa3a4b730cf559">Email: Extended payload — MCP response testing (Case #01417731)</a></div>
+        <strong>Send Santosh the user-level invoice reconciliation / usage query details</strong> for June 2026 validation.
+        <div class="action-source"><a href="https://mail.google.com/mail/u/#inbox/19f8f1de6302c3cd">Email: Queries</a></div>
       </div>
     </li>
     <li>
       <div class="checkbox"></div>
       <div>
-        <strong>Benchmark Postgres vs Snowflake interactive warehouses</strong> for Xometry — performance, cost &amp; maintainability for feature store / ClickHouse migration POC.
+        <strong>Send PPL the warehouse performance analysis queries</strong> requested in the weekly check-in.
+        <div class="action-source"><a href="https://mail.google.com/mail/u/#inbox/19ed791d857aac84">Email: RE: PPL &amp; Snowflake - Weekly Check-In</a></div>
+      </div>
+    </li>
+    <li>
+      <div class="checkbox"></div>
+      <div>
+        <strong>Benchmark Xometry Postgres vs Snowflake interactive warehouses</strong> — performance, cost, maintainability.
         <div class="action-source"><a href="https://us-60424.app.gong.io/call?id=1530053332888449850">Gong: HOLD - Xometry / Snowflake FY26-27 Roadmap</a></div>
       </div>
     </li>
     <li>
       <div class="checkbox"></div>
       <div>
-        <strong>Prepare Xometry observability deep dive</strong> — data observability, agent observability, agent context/ontology; bring in PM/specialists.
+        <strong>Xometry observability follow-up</strong> — Snowflake observability vs Monte Carlo for data and agent observability.
         <div class="action-source"><a href="https://us-60424.app.gong.io/call?id=1530053332888449850">Gong: HOLD - Xometry / Snowflake FY26-27 Roadmap</a></div>
       </div>
     </li>
@@ -156,69 +156,55 @@
   <span class="badge b-blue">11 accounts</span>
 </div>
 
-<!-- ANOMALIES with root cause -->
+<!-- ANOMALIES -->
 <div class="anomaly-card">
-  <div class="anomaly-header">⚠️ Usage Anomalies — last 7 days · rolling window · with root-cause analysis</div>
+  <div class="anomaly-header">⚠️ Usage Anomalies — last 7 days · rolling window · root-cause via METERING2_SAFE_ALL</div>
   <table>
     <thead>
-      <tr><th>Date</th><th>Account</th><th>Feature</th><th class="num">Spike</th><th class="num">Ratio</th><th>Root Cause (JOB_CREDITS)</th></tr>
+      <tr><th>Date</th><th>Account</th><th>Feature</th><th class="num">Spike</th><th class="num">Ratio</th><th>Root Cause</th></tr>
     </thead>
     <tbody>
       <tr>
-        <td>Jul 27–28</td><td>Xometry</td>
+        <td>Jul 28</td><td>Xometry</td>
         <td><span class="badge b-purple">AI_FUNCTIONS</span></td>
-        <td class="num spike-hi">$1.2K–$17.1K</td>
-        <td class="num spike-hi">97–203×</td>
-        <td class="cause">Not in JOB_CREDITS — AI function calls tracked separately. Correlates exactly with 31 CI agent deployments on those days (automated eval runs).</td>
+        <td class="num spike-hi">$17,052</td>
+        <td class="num spike-hi">96.5×</td>
+        <td class="cause"><strong>anahitha.menon@xometry.com</strong> — 5 <code>AI_CLASSIFY</code> queries consumed 4.5B tokens ($7,364) + 8 <code>AI_COMPLETE</code> llama3.1-8b queries ($1,162). Massive batch classification job.</td>
+      </tr>
+      <tr>
+        <td>Jul 27</td><td>Xometry</td>
+        <td><span class="badge b-purple">AI_FUNCTIONS</span></td>
+        <td class="num spike-hi">$1,196</td>
+        <td class="num spike-hi">202.7×</td>
+        <td class="cause"><strong>anahitha.menon@xometry.com</strong> — 14 <code>AI_COMPLETE</code> ($491) + 13 <code>AI_CLASSIFY</code> ($62) + 5 <code>AI_EXTRACT</code> ($45). Same user, smaller run — Jul 28 was 15× more expensive.</td>
       </tr>
       <tr>
         <td>Jul 25</td><td>SPINS</td>
         <td><span class="badge b-gray">DATA_TRANSFER</span></td>
         <td class="num spike-hi">$2,194</td>
         <td class="num spike-hi">6,093×</td>
-        <td class="cause">Data egress — not tracked in JOB_CREDITS. Likely a large data export from <code>AUTO_FULFILLMENT_AREA</code> account. Worth asking the customer.</td>
+        <td class="cause">Data egress — not in metering. Large export from <code>AUTO_FULFILLMENT_AREA</code> account. Cause unknown — worth asking customer.</td>
       </tr>
       <tr>
         <td>Jul 25</td><td>SPINS</td>
         <td><span class="badge b-gray">COMPUTE</span></td>
         <td class="num spike-hi">$1,498</td>
         <td class="num spike-hi">28×</td>
-        <td class="cause"><code>SDN_DELIVERY_EXPORT_WH</code> ran 756 JavaScript export jobs — 862 credits. Large syndicated data delivery run, probably to a retail client.</td>
+        <td class="cause"><code>SDN_DELIVERY_EXPORT_WH</code>: 756 JavaScript export jobs, 862 credits — large syndicated data delivery run.</td>
       </tr>
       <tr>
         <td>Jul 26</td><td>IRONMAN</td>
         <td><span class="badge b-purple">AI_SERVICES</span></td>
         <td class="num spike-hi">$288</td>
         <td class="num spike-hi">340×</td>
-        <td class="cause"><code>REGISTRATION_INGEST_WH</code> ran 190K SYSTEM jobs (239 credits). <code>COMPUTE_WH</code> via SnowCLI ran 34K jobs — likely AI function calls embedded in the ingest pipeline.</td>
+        <td class="cause">System/service calls (no user in role_names) — 28 <code>AI_CLASSIFY</code> + 153 <code>AI_COMPLETE</code> (mistral-large2). Metering shows $1 vs $288 revenue spike; billing lag likely.</td>
       </tr>
       <tr>
         <td>Jul 27–29</td><td>iPipeline</td>
         <td><span class="badge b-gray">COMPUTE</span></td>
         <td class="num spike-med">$1.9K–$2.2K/day</td>
         <td class="num spike-med">4–7.6×</td>
-        <td class="cause">New DBT DAG <code>ams_dag_local</code> on new warehouse <code>AMS_DATALAKE_ICE_WH_STANDARD</code>: 7,811 jobs / 254 credits Jul 28 alone. User <code>tkooy</code> (Analytics) also active on <code>DATA_APPLICATION_TRANSFER_WH</code>.</td>
-      </tr>
-      <tr>
-        <td>Jul 24–26</td><td>Caerus (RWDDP)</td>
-        <td><span class="badge b-gray">COMPUTE</span></td>
-        <td class="num spike-med">$634–$968/day</td>
-        <td class="num spike-med">2.8–4.2×</td>
-        <td class="cause">Not investigated (below 5× threshold for the RWDDP account — smaller deployment). Consistent 3-day elevation suggests a scheduled job that ran heavier than usual.</td>
-      </tr>
-      <tr>
-        <td>Jul 28–29</td><td>Clarivate (DRG)</td>
-        <td><span class="badge b-gray">COMPUTE</span></td>
-        <td class="num spike-med">$342–$382</td>
-        <td class="num spike-med">2.2–3.9×</td>
-        <td class="cause">Not investigated (below threshold). <code>HARVEST_PROD_EHR_WH</code> is a new warehouse that started Jul 24 — compute spike likely reflects ramp-up of new EHR workload.</td>
-      </tr>
-      <tr>
-        <td>Jul 29</td><td>IRONMAN</td>
-        <td><span class="badge b-purple">CORTEX_CODE_DESKTOP</span></td>
-        <td class="num spike-med">$272</td>
-        <td class="num spike-med">3.3×</td>
-        <td class="cause">Not investigated. Heavy CoCo Desktop session — likely a long interactive working session or demo build.</td>
+        <td class="cause">New DBT dag <code>ams_dag_local</code> on new warehouse <code>AMS_DATALAKE_ICE_WH_STANDARD</code>: 7,811 jobs / 254 credits Jul 28.</td>
       </tr>
     </tbody>
   </table>
@@ -230,61 +216,40 @@
   <span class="badge b-blue">May–Jul 2026 vs May–Jul 2025</span>
 </div>
 
-<div class="mom-grid">
-  <div class="mom-card">
-    <div class="mom-acct">The IRONMAN Group <span class="badge b-green" style="font-size:10px;">new customer</span></div>
-    <div class="mom-row"><span class="mom-month">May 2026</span><span class="mom-rev">$25,436</span><span class="yoy-up">PY: $24</span></div>
-    <div class="mom-row"><span class="mom-month">Jun 2026</span><span class="mom-rev">$36,087</span><span class="yoy-up">+42% MoM</span></div>
-    <div class="mom-row"><span class="mom-month">Jul 2026</span><span class="mom-rev">$38,051</span><span class="yoy-up">+5% MoM · AI ↑$1,051</span></div>
-    <div class="note-box">Strong ramp. AI Services + CoCo Desktop growing each month.</div>
-  </div>
-  <div class="mom-card">
-    <div class="mom-acct">PPL Services Corp <span class="badge b-green" style="font-size:10px;">new customer</span></div>
-    <div class="mom-row"><span class="mom-month">May 2026</span><span class="mom-rev">$76,471</span><span class="yoy-up">PY: $87</span></div>
-    <div class="mom-row"><span class="mom-month">Jun 2026</span><span class="mom-rev">$3,722</span><span class="yoy-down">−95% MoM</span></div>
-    <div class="mom-row"><span class="mom-month">Jul 2026</span><span class="mom-rev">$78,675</span><span class="yoy-up">+2,015% MoM</span></div>
-    <div class="note-box">Large swings — likely multi-account billing cycles or batch jobs.</div>
-  </div>
-  <div class="mom-card">
-    <div class="mom-acct">Caerus US 1 Inc.</div>
-    <div class="mom-row"><span class="mom-month">May 2026</span><span class="mom-rev">—</span><span style="font-size:11px;">PY: $90</span></div>
-    <div class="mom-row"><span class="mom-month">Jun 2026</span><span class="mom-rev">$702</span><span class="yoy-down">PY: $29,184</span></div>
-    <div class="mom-row"><span class="mom-month">Jul 2026</span><span class="mom-rev">$45,827</span><span class="yoy-up">+50% YoY</span></div>
-    <div class="note-box">Jul strong at +50% YoY. May–Jun gaps suggest multi-account split not fully covered.</div>
-  </div>
-  <div class="mom-card">
-    <div class="mom-acct">CPA Global</div>
-    <div class="mom-row"><span class="mom-month">May 2026</span><span class="mom-rev">$966</span><span class="yoy-up">+36% YoY</span></div>
-    <div class="mom-row"><span class="mom-month">Jun 2026</span><span class="mom-rev">$922</span><span class="yoy-up">+20% YoY</span></div>
-    <div class="mom-row"><span class="mom-month">Jul 2026</span><span class="mom-rev">$881</span><span class="yoy-up">+16% YoY</span></div>
-    <div class="note-box">Small account, consistent +16–36% YoY growth trend.</div>
-  </div>
-</div>
-
-<div class="card" style="margin-top:4px;">
-  <div style="font-size:12px;color:light-dark(#94a3b8,#64748b);">
-    <strong style="color:light-dark(#475569,#94a3b8);">Coverage note:</strong>
-    Xometry, Vertex, Upside, iPipeline, SPINS, Clarivate, and Kalibri show incomplete or zero revenue in the MoM view due to multi-account splits in <code>dim_customer_current_user</code>. Their activity is captured in the anomaly detector above.
-  </div>
+<div class="card" style="padding:0;overflow:hidden;">
+  <table>
+    <thead>
+      <tr><th>Account</th><th class="num">May '26</th><th class="num">Jun '26</th><th class="num">Jul '26</th><th>Jul YoY</th><th>AI Jul '26</th><th>Trend</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>Vertex, Inc.</td><td class="num">$355K</td><td class="num">$287K</td><td class="num">$274K</td><td><span class="yoy-up">+34%</span></td><td><span class="badge b-purple">$401</span></td><td><span class="trend-down">↓ MoM</span></td></tr>
+      <tr><td>Upside</td><td class="num">$157K</td><td class="num">$156K</td><td class="num">$145K</td><td><span class="yoy-down">−13%</span></td><td><span class="badge b-gray">$25</span></td><td><span class="trend-down">↓ MoM + YoY</span></td></tr>
+      <tr><td>Clarivate Analytics</td><td class="num">$157K</td><td class="num">$156K</td><td class="num">$147K</td><td><span class="yoy-flat">+4%</span></td><td><span class="badge b-purple">CoCo $3.1K</span></td><td><span class="trend-down">↓ MoM</span></td></tr>
+      <tr><td><strong>Xometry</strong></td><td class="num">$77K</td><td class="num">$85K</td><td class="num"><strong>$105K</strong></td><td><span class="yoy-up">+56%</span></td><td><span class="badge b-purple" style="font-weight:700">$20,741 🔥</span></td><td><span class="trend-up">↑ Strong</span></td></tr>
+      <tr><td>Caerus US 1 Inc.</td><td class="num">$162K</td><td class="num">$182K</td><td class="num">$160K</td><td><span class="yoy-up">+35%</span></td><td><span class="badge b-purple">$4.1K · CoCo $1.5K</span></td><td><span class="trend-down">↓ from Jun</span></td></tr>
+      <tr><td>PPL Services Corp</td><td class="num">$79K</td><td class="num">$78K</td><td class="num">$83K</td><td><span class="yoy-up">+16%</span></td><td><span class="badge b-gray">Minimal</span></td><td><span class="trend-up">↑ Steady</span></td></tr>
+      <tr><td>iPipeline, Inc.</td><td class="num">$61K</td><td class="num">$64K</td><td class="num">$67K</td><td><span class="yoy-up">+22%</span></td><td><span class="badge b-red" style="font-size:10px">No AI</span></td><td><span class="trend-up">↑ No AI</span></td></tr>
+      <tr><td>SPINS LLC</td><td class="num">$58K</td><td class="num">$60K</td><td class="num">$50K</td><td><span class="yoy-flat">−3%</span></td><td><span class="badge b-purple">CoCo $127</span></td><td><span class="trend-down">↓ Jul dip</span></td></tr>
+      <tr><td>Kalibri Labs LLC</td><td class="num">$27K</td><td class="num">$30K</td><td class="num">$34K</td><td><span class="yoy-down">−19%</span></td><td><span class="badge b-gray">CoCo $11</span></td><td><span class="trend-up">↑ MoM / <span class="yoy-down">−19% YoY</span></span></td></tr>
+      <tr><td>The IRONMAN Group</td><td class="num">$25K</td><td class="num">$36K</td><td class="num">$38K</td><td><span class="yoy-up">new</span></td><td><span class="badge b-purple">AI $1.1K · CoCo $5.8K</span></td><td><span class="trend-up">↑ Ramping</span></td></tr>
+      <tr><td>CPA Global</td><td class="num">$966</td><td class="num">$922</td><td class="num">$881</td><td><span class="yoy-up">+16%</span></td><td><span class="badge b-purple">$5</span></td><td><span class="trend-flat">→</span></td></tr>
+    </tbody>
+  </table>
 </div>
 
 <!-- New Agents -->
 <div class="section-header" style="margin-top:28px;">
   <h2 style="font-size:15px;">New Cortex Agents</h2>
-  <span class="badge b-purple">31 new · Xometry only · last 7 days</span>
+  <span class="badge b-purple">31 new · Xometry · last 7 days</span>
 </div>
 <div class="card">
-  <div class="card-meta" style="margin-bottom:8px;"><strong style="color:light-dark(#0f172a,#f1f5f9);">Xometry</strong> &nbsp;·&nbsp; Active CI/CD pipeline — multiple branches daily</div>
+  <div style="font-size:12px;color:light-dark(#64748b,#94a3b8);margin-bottom:8px;"><strong style="color:light-dark(#0f172a,#f1f5f9);">Xometry</strong> &nbsp;·&nbsp; CI/CD pipeline daily. Jul AI revenue $20.7K — driven by batch AI_CLASSIFY + AI_COMPLETE runs from anahitha.menon@xometry.com.</div>
   <div style="display:flex;flex-wrap:wrap;gap:6px;">
     <span class="agent-name">SEMANTIC_VIEWS.AGENT_THOMAS_SMART_SEARCH</span>
     <span class="agent-name">SEMANTIC_VIEWS.ON_PLATFORM_COMMUNICATIONS_AGENT</span>
     <span class="agent-name">SEMANTIC_VIEWS.STATSIG</span>
     <span class="agent-name">SEMANTIC_VIEWS_ACCOUNTING.ACCOUNTING_AGENT</span>
-    <span class="agent-name">DEV_SUPPLIER_SERVICES.AGENT_THOMAS_BUYER_V2</span>
     <span class="agent-name">DEV_SUPPLIER_SERVICES.AGENT_THOMAS_BUYER_V2_PRODVAL</span>
-  </div>
-  <div style="margin-top:8px;font-size:12px;color:light-dark(#64748b,#94a3b8);">
-    BUYER_V2_PRODVAL appeared Jul 29 — prod validation underway. The AI_FUNCTIONS spike Jul 27–28 confirms these CI runs are triggering significant AI function calls (~$18K over 2 days).
   </div>
 </div>
 
@@ -296,13 +261,11 @@
 <div class="card" style="padding:0;overflow:hidden;margin-bottom:12px;">
   <div class="sub-label" style="color:#22c55e;">▲ New Workloads</div>
   <table>
-    <thead><tr><th>Account</th><th>Warehouse</th><th>First Active</th><th class="num">Credits 7d</th><th class="num">Avg/Day</th></tr></thead>
+    <thead><tr><th>Account</th><th>Warehouse</th><th>First Active</th><th class="num">Avg/Day</th></tr></thead>
     <tbody>
-      <tr><td>iPipeline</td><td><code>AMS_DATALAKE_ICE_WH_STANDARD</code></td><td>Jul 27</td><td class="num">428</td><td class="num" style="font-weight:700">142.7</td></tr>
-      <tr><td>Clarivate</td><td><code>HARVEST_PROD_EHR_WH</code></td><td>Jul 24</td><td class="num">743</td><td class="num" style="font-weight:700">123.7</td></tr>
-      <tr><td>Caerus</td><td><code>CORE_ETL_PRD_XSMALL</code></td><td>Jul 23</td><td class="num">153</td><td class="num">19.1</td></tr>
-      <tr><td>Vertex</td><td><code>WH_PRD_ITI_INTEGRATION</code></td><td>Jul 29</td><td class="num">34</td><td class="num">17.0</td></tr>
-      <tr><td>iPipeline</td><td><code>DATA_APPLICATION_TRANSFER_WH</code></td><td>Jul 27</td><td class="num">35</td><td class="num">11.7</td></tr>
+      <tr><td>Clarivate</td><td><code>HARVEST_PROD_EHR_WH</code></td><td>Jul 24</td><td class="num" style="font-weight:700">123.7</td></tr>
+      <tr><td>Caerus</td><td><code>CORE_ETL_PRD_XSMALL</code></td><td>Jul 23</td><td class="num">19.1</td></tr>
+      <tr><td>iPipeline</td><td><code>DATA_APPLICATION_TRANSFER_WH</code></td><td>Jul 27</td><td class="num">11.7</td></tr>
     </tbody>
   </table>
 </div>
@@ -311,11 +274,10 @@
   <table>
     <thead><tr><th>Account</th><th>Warehouse</th><th>Last Active</th><th class="num">Avg/Day</th></tr></thead>
     <tbody>
-      <tr><td>Kalibri Labs</td><td><code>DATA_WAREHOUSE_ESTIMATION_INSERT</code></td><td>Jul 21</td><td class="num">82.9</td></tr>
       <tr><td>Caerus</td><td><code>TST_WH_RWD_TESSERACT</code></td><td>Jul 13</td><td class="num">124.1</td></tr>
-      <tr><td>SPINS</td><td><code>COMPASS_AIRLFOW</code></td><td>Jul 19</td><td class="num">33.1</td></tr>
-      <tr><td>SPINS</td><td><code>NUCLEUS_INGESTION</code></td><td>Jul 9</td><td class="num">20.4</td></tr>
+      <tr><td>Kalibri Labs</td><td><code>DATA_WAREHOUSE_ESTIMATION_INSERT</code></td><td>Jul 21</td><td class="num">82.9</td></tr>
       <tr><td>Vertex</td><td><code>WH_DEV_PERF_TEST_XL</code></td><td>Jul 2</td><td class="num">42.6</td></tr>
+      <tr><td>SPINS</td><td><code>TREBUCHET_EXPORT_DB71...</code></td><td>Jul 1</td><td class="num">47.0</td></tr>
     </tbody>
   </table>
 </div>
@@ -323,33 +285,39 @@
 <div class="highlight-box">
   <strong>Worth a conversation this week:</strong>
   <ul>
-    <li><strong>Xometry</strong> — CI agent evals are burning ~$18K/2 days in AI functions. You have 3 open action items from the roadmap call. BUYER_V2_PRODVAL appeared Jul 29 — prod launch is close.</li>
-    <li><strong>SPINS</strong> — <code>SDN_DELIVERY_EXPORT_WH</code> ran a 862-credit JavaScript export Jul 25 (28× normal) + a separate $2.2K data transfer. Two independent cost events in one day. Check in.</li>
-    <li><strong>iPipeline</strong> — New DBT dag <code>ams_dag_local</code> drove the compute spike: 7,811 jobs / 254 credits on Jul 28 alone. New data lake project just launched. No AI adoption yet.</li>
-    <li><strong>IRONMAN</strong> — 190K SYSTEM jobs on <code>REGISTRATION_INGEST_WH</code> on Jul 26 triggered the AI_SERVICES spike. Heavy pipeline + AI functions embedded. Growing account, but may not have cost visibility.</li>
+    <li><strong>Xometry — Anahitha Menon</strong> ran a 4.5B-token <code>AI_CLASSIFY</code> batch job on Jul 28 ($7,364 in AI credits alone). Confirmed from metering. Is this intentional production workload? Also: you owe them the Postgres benchmark + observability follow-up.</li>
+    <li><strong>Vertex</strong> — $274K/month, declining MoM for 3 consecutive months. Still +34% YoY but the trend warrants a conversation.</li>
+    <li><strong>Upside</strong> — −13% YoY, declining every month, minimal AI. Needs attention.</li>
+    <li><strong>SPINS</strong> — $2.2K data egress spike + 862-credit export job Jul 25. Revenue dipped in July. Something changed.</li>
+    <li><strong>iPipeline</strong> — New DBT pipeline launched Jul 27, no AI adoption yet despite +22% YoY growth.</li>
   </ul>
 </div>
 
-<!-- SVG chart -->
+<!-- July revenue chart -->
+<div class="card" style="margin-top:28px;">
+  <div class="card-title" style="margin-bottom:14px;">July 2026 Monthly Revenue by Account</div>
+  <div id="revenueChart"></div>
+</div>
+
 <script>
-(function() {
-  const data = [
-    { account: 'Vertex',    revenue: 74880, trend: 'up'   },
-    { account: 'Caerus',    revenue: 46144, trend: 'down' },
-    { account: 'Xometry',   revenue: 43030, trend: 'up'   },
-    { account: 'Upside',    revenue: 41696, trend: 'flat' },
-    { account: 'Clarivate', revenue: 38961, trend: 'up'   },
-    { account: 'PPL',       revenue: 21468, trend: 'up'   },
-    { account: 'iPipeline', revenue: 18050, trend: 'up'   },
-    { account: 'SPINS',     revenue: 16618, trend: 'down' },
-    { account: 'IRONMAN',   revenue: 10415, trend: 'up'   },
-    { account: 'Kalibri',   revenue:  8819, trend: 'up'   },
-    { account: 'CPA Global',revenue:   260, trend: 'up'   },
+(function(){
+  const data=[
+    {account:'Vertex',    revenue:273632,trend:'down'},
+    {account:'Caerus',    revenue:160105,trend:'down'},
+    {account:'Upside',    revenue:145222,trend:'down'},
+    {account:'Clarivate', revenue:147310,trend:'down'},
+    {account:'Xometry',   revenue:105037,trend:'up'  },
+    {account:'PPL',       revenue: 82814,trend:'up'  },
+    {account:'iPipeline', revenue: 66756,trend:'up'  },
+    {account:'SPINS',     revenue: 50427,trend:'down'},
+    {account:'IRONMAN',   revenue: 38051,trend:'up'  },
+    {account:'Kalibri',   revenue: 33892,trend:'up'  },
+    {account:'CPA Global',revenue:   881,trend:'flat'},
   ];
-  const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-  const W=900,H=240,ml=54,mr=10,mt=12,mb=44,cw=W-ml-mr,ch=H-mt-mb;
+  const isDark=window.matchMedia('(prefers-color-scheme: dark)').matches;
+  const W=900,H=240,ml=60,mr=10,mt=12,mb=44,cw=W-ml-mr,ch=H-mt-mb;
   const maxV=Math.max(...data.map(d=>d.revenue));
-  const slotW=cw/data.length, barW=Math.max(slotW*0.62,18);
+  const slotW=cw/data.length,barW=Math.max(slotW*0.62,18);
   const gridC=isDark?'rgba(255,255,255,0.08)':'rgba(0,0,0,0.08)';
   const textC=isDark?'#94a3b8':'#64748b';
   const colorOf=t=>t==='up'?(isDark?'#16a34a':'#22c55e'):t==='down'?(isDark?'#dc2626':'#ef4444'):(isDark?'#64748b':'#94a3b8');
@@ -357,7 +325,7 @@
   const svg=document.createElementNS(ns,'svg');
   svg.setAttribute('width',W);svg.setAttribute('height',H);svg.setAttribute('viewBox',`0 0 ${W} ${H}`);svg.style.display='block';
   const mk=(tag,a)=>{const e=document.createElementNS(ns,tag);Object.entries(a).forEach(([k,v])=>e.setAttribute(k,v));return e;};
-  [0,25000,50000,75000].forEach(v=>{
+  [0,100000,200000,300000].forEach(v=>{
     const y=mt+ch-(v/maxV)*ch;
     svg.appendChild(mk('line',{x1:ml,y1:y,x2:ml+cw,y2:y,stroke:gridC,'stroke-width':1}));
     const t=document.createElementNS(ns,'text');t.setAttribute('x',ml-5);t.setAttribute('y',y+4);
@@ -375,14 +343,7 @@
   });
   svg.appendChild(mk('line',{x1:ml,y1:mt,x2:ml,y2:mt+ch,stroke:gridC,'stroke-width':1}));
   svg.appendChild(mk('line',{x1:ml,y1:mt+ch,x2:ml+cw,y2:mt+ch,stroke:gridC,'stroke-width':1}));
-  // Insert chart before anomaly section
-  const firstSection=document.querySelector('#customer-health');
-  const chartCard=document.createElement('div');
-  chartCard.className='card';
-  chartCard.style.marginBottom='12px';
-  const title=document.createElement('div');title.className='card-title';title.style.marginBottom='14px';title.textContent='8-Day Revenue by Account';
-  chartCard.appendChild(title);chartCard.appendChild(svg);
-  firstSection.parentNode.insertBefore(chartCard, firstSection.nextSibling);
+  document.getElementById('revenueChart').appendChild(svg);
 })();
 </script>
 
