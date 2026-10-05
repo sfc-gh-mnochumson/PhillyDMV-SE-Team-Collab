@@ -92,6 +92,8 @@ ORDER BY last_modified_date DESC
 
 Use **`SNOWSCIENCE.LIVE_OBJECTS.ALL_LIVE_*`** tables — cross-deployment, no schema conversion needed. Run all sub-queries in parallel.
 
+**Exception — 4c, 4e, 4f use `SNOWHOUSE_IMPORT.{DEPLOYMENT_UPPER}.*_ETL_V`.** `ALL_LIVE_SEMANTIC_VIEWS`, `ALL_LIVE_CORTEX_SEARCH_SERVICES`, and `ALL_LIVE_STREAMLITS` are not readable by the `SALES_ENGINEER` role (`does not exist or not authorized`). The Snowhouse views are per-deployment: substitute `{DEPLOYMENT_UPPER}` (e.g. `va2` → `VA2`) and omit `deployment` predicates. They return one row per live instance, so these queries `GROUP BY name` to count distinct objects.
+
 ### Drop-and-Recreate Filter Pattern
 
 Objects that are dropped and immediately recreated create noise (they look "new" but are not). For every object type, apply this anti-join:
@@ -197,19 +199,19 @@ LIMIT 300
 ```sql
 SELECT
     sv.name AS semantic_view_name,
-    sv.created_on::DATE AS created_date,
-    sv.comment
-FROM SNOWSCIENCE.LIVE_OBJECTS.ALL_LIVE_SEMANTIC_VIEWS sv
-LEFT JOIN SNOWSCIENCE.LIVE_OBJECTS.ALL_LIVE_SEMANTIC_VIEWS sv_old
-    ON sv.account_id = sv_old.account_id AND sv.deployment = sv_old.deployment
+    MIN(sv.created_on)::DATE AS created_date,
+    MAX(sv.comment) AS comment
+FROM SNOWHOUSE_IMPORT.{DEPLOYMENT_UPPER}.SEMANTIC_VIEW_ETL_V sv
+LEFT JOIN SNOWHOUSE_IMPORT.{DEPLOYMENT_UPPER}.SEMANTIC_VIEW_ETL_V sv_old
+    ON sv.account_id = sv_old.account_id
     AND sv.name = sv_old.name
     AND sv_old.deleted_on IS NOT NULL
     AND sv_old.created_on < DATEADD(day, -30, CURRENT_DATE())
 WHERE sv.account_id = {account_id}
-  AND sv.deployment = '{deployment}'
   AND sv.deleted_on IS NULL
   AND sv_old.name IS NULL
-ORDER BY sv.created_on DESC
+GROUP BY sv.name
+ORDER BY created_date DESC
 LIMIT 100
 ```
 
@@ -249,53 +251,58 @@ LIMIT 100
 ```sql
 SELECT
     cs.name AS service_name,
-    cs.created_on::DATE AS created_date,
-    cs.comment
-FROM SNOWSCIENCE.LIVE_OBJECTS.ALL_LIVE_CORTEX_SEARCH_SERVICES cs
-LEFT JOIN SNOWSCIENCE.LIVE_OBJECTS.ALL_LIVE_CORTEX_SEARCH_SERVICES cs_old
-    ON cs.account_id = cs_old.account_id AND cs.deployment = cs_old.deployment
+    MIN(cs.created_on)::DATE AS created_date,
+    COUNT(DISTINCT cs.id) AS live_instances,
+    MAX(cs.comment) AS comment
+FROM SNOWHOUSE_IMPORT.{DEPLOYMENT_UPPER}.CORTEX_SEARCH_SERVICE_ETL_V cs
+LEFT JOIN SNOWHOUSE_IMPORT.{DEPLOYMENT_UPPER}.CORTEX_SEARCH_SERVICE_ETL_V cs_old
+    ON cs.account_id = cs_old.account_id
     AND cs.name = cs_old.name
     AND cs_old.deleted_on IS NOT NULL
     AND cs_old.created_on < DATEADD(day, -30, CURRENT_DATE())
 WHERE cs.account_id = {account_id}
-  AND cs.deployment = '{deployment}'
   AND cs.deleted_on IS NULL
   AND cs_old.name IS NULL
-ORDER BY cs.created_on DESC
+GROUP BY cs.name
+ORDER BY created_date DESC
 LIMIT 100
 ```
+
+The same service name often exists in several schemas — report distinct names, and use `live_instances` only as a scale signal.
+
+Cross-deployment alternative: `SNOWSCIENCE.LLM.CORTEX_SEARCH_SERVICES` (`account_id`, `deployment`, `name`, `database`, `schema`, `created_on`) is readable by `SALES_ENGINEER`, but has no `deleted_on` and appears to include dropped services. `SNOWSCIENCE.LLM.CORTEX_SEARCH_DAILY_ACTIVE_SERVICES` adds daily request counts split by agent / Analyst / direct use — useful as a usage signal.
 
 ### 4f: Streamlit Apps (all)
 
 ```sql
 SELECT
     sl.name AS app_name,
-    sl.created_on::DATE AS created_date,
-    sl.comment,
-    sl.title
-FROM SNOWSCIENCE.LIVE_OBJECTS.ALL_LIVE_STREAMLITS sl
-LEFT JOIN SNOWSCIENCE.LIVE_OBJECTS.ALL_LIVE_STREAMLITS sl_old
-    ON sl.account_id = sl_old.account_id AND sl.deployment = sl_old.deployment
+    MIN(sl.created_on)::DATE AS created_date,
+    MAX(sl.comment) AS comment,
+    MAX(sl.title) AS title
+FROM SNOWHOUSE_IMPORT.{DEPLOYMENT_UPPER}.STREAMLIT_ETL_V sl
+LEFT JOIN SNOWHOUSE_IMPORT.{DEPLOYMENT_UPPER}.STREAMLIT_ETL_V sl_old
+    ON sl.account_id = sl_old.account_id
     AND sl.name = sl_old.name
     AND sl_old.deleted_on IS NOT NULL
     AND sl_old.created_on < DATEADD(day, -30, CURRENT_DATE())
 WHERE sl.account_id = {account_id}
-  AND sl.deployment = '{deployment}'
   AND sl.deleted_on IS NULL
   AND sl_old.name IS NULL
-ORDER BY sl.created_on DESC
+GROUP BY sl.name
+ORDER BY created_date DESC
 LIMIT 150
 ```
 
-Prioritize named apps (not auto-generated hash names) and apps with a meaningful `comment` or `title`.
+Prioritize named apps (not auto-generated hash names) and apps with a meaningful `comment` or `title`. Workspace-published apps have hash names (`ST98A4…`) but a readable `title`; their `comment` is JSON containing the source workspace path and publisher user ID.
 
 ### 4g: Notebooks (last 30 days)
 
 ```sql
 SELECT
     nb.name AS notebook_name,
-    nb.created_on::DATE AS created_date,
-    nb.comment
+    MIN(nb.created_on)::DATE AS created_date,
+    MAX(nb.sf_sit_comment) AS comment
 FROM SNOWSCIENCE.LIVE_OBJECTS.ALL_LIVE_NOTEBOOKS nb
 LEFT JOIN SNOWSCIENCE.LIVE_OBJECTS.ALL_LIVE_NOTEBOOKS nb_old
     ON nb.account_id = nb_old.account_id AND nb.deployment = nb_old.deployment
@@ -307,30 +314,44 @@ WHERE nb.account_id = {account_id}
   AND nb.created_on >= DATEADD(day, -30, CURRENT_TIMESTAMP())
   AND nb.deleted_on IS NULL
   AND nb_old.name IS NULL
-ORDER BY nb.created_on DESC
+GROUP BY nb.name
+ORDER BY created_date DESC
 LIMIT 50
 ```
+
+`ALL_LIVE_NOTEBOOKS` has no `comment` column — the comment is in `SF_SIT_COMMENT`.
 
 ### 4h: Document AI Usage (last 30 days)
 
+`ALL_LIVE_DOCUMENT_UNDERSTANDING` is not readable by `SALES_ENGINEER`, and classic Document AI project tracking (`SNOWSCIENCE.SNOWML.DOCUMENT_AI_ACTIVE_PROJECTS`) stopped refreshing in April 2026. Measure document AI by **usage** instead: `AI_PARSE_DOCUMENT` from `LLM.CORTEX_LLM_PARSE_DOC_CREDITS`, plus `AI_EXTRACT` and any AI function called on a document (`doc = TRUE`) from `LLM.CORTEX_LLM_TOKEN_CREDITS`. Both are cross-deployment.
+
 ```sql
+WITH usage AS (
+    SELECT ds, model_name AS function_model, credits
+    FROM SNOWSCIENCE.LLM.CORTEX_LLM_PARSE_DOC_CREDITS
+    WHERE account_id = {account_id}
+      AND LOWER(deployment) = '{deployment}'
+      AND ds >= DATEADD(day, -30, CURRENT_DATE())
+    UNION ALL
+    SELECT ds, function_model, credits
+    FROM SNOWSCIENCE.LLM.CORTEX_LLM_TOKEN_CREDITS
+    WHERE account_id = {account_id}
+      AND LOWER(deployment) = '{deployment}'
+      AND ds >= DATEADD(day, -30, CURRENT_DATE())
+      AND (function_model ILIKE 'AI_EXTRACT%' OR doc = TRUE)
+)
 SELECT
-    du.name AS job_name,
-    du.created_on::DATE AS created_date,
-    du.comment
-FROM SNOWSCIENCE.LIVE_OBJECTS.ALL_LIVE_DOCUMENT_UNDERSTANDING du
-LEFT JOIN SNOWSCIENCE.LIVE_OBJECTS.ALL_LIVE_DOCUMENT_UNDERSTANDING du_old
-    ON du.account_id = du_old.account_id AND du.deployment = du_old.deployment
-    AND du.name = du_old.name
-    AND du_old.deleted_on IS NOT NULL
-    AND du_old.created_on < DATEADD(day, -30, CURRENT_DATE())
-WHERE du.account_id = {account_id}
-  AND du.deployment = '{deployment}'
-  AND du.created_on >= DATEADD(day, -30, CURRENT_TIMESTAMP())
-  AND du_old.name IS NULL
-ORDER BY du.created_on DESC
-LIMIT 50
+    function_model,
+    COUNT(DISTINCT ds) AS active_days,
+    ROUND(SUM(credits), 2) AS credits,
+    MIN(ds) AS first_ds,
+    MAX(ds) AS latest_ds
+FROM usage
+GROUP BY function_model
+ORDER BY credits DESC
 ```
+
+This returns usage, not named objects — treat any `AI_EXTRACT` / `AI_PARSE_DOCUMENT` activity as a document-processing signal and look in 4a/4b for the stages/tables it reads from to name the workload.
 
 ---
 
@@ -346,8 +367,9 @@ If a `SNOWSCIENCE.LIVE_OBJECTS.ALL_LIVE_<TYPE>` table does not exist or returns 
 | `ALL_LIVE_CORTEX_SEARCH_SERVICES` | `CORTEX_SEARCH_SERVICE_ETL_V` |
 | `ALL_LIVE_STREAMLITS` | `STREAMLIT_ETL_V` |
 | `ALL_LIVE_NOTEBOOKS` | `NOTEBOOK_ETL_V` |
+| `ALL_LIVE_DOCUMENT_UNDERSTANDING` | none — use the usage-based 4h query (`LLM.CORTEX_LLM_PARSE_DOC_CREDITS` + `LLM.CORTEX_LLM_TOKEN_CREDITS`) |
 
-The Snowhouse fallback does not include the drop-and-recreate filter — results may contain more noise.
+Queries 4c, 4e, and 4f above already use the Snowhouse views with the drop-and-recreate filter applied. For other types, the Snowhouse fallback does not include that filter unless you add it — results may contain more noise.
 
 ---
 
