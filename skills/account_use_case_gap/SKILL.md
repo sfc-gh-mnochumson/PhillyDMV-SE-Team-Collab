@@ -101,7 +101,10 @@ Proceed immediately to Step 3 — no user prompt needed.
 
 ## Step 2U: Resolve by Salesforce ID (unattended)
 
-Replace the name searches in 2a with the IDs from `ACCOUNT.md`, and take the highest-revenue Snowflake account **per Salesforce ID**:
+Replace the name searches in 2a with the IDs from `ACCOUNT.md`, then choose which Snowflake accounts to scan:
+
+1. **Named accounts first.** From the `ACCOUNT.md` Deployments line, collect every Snowflake account that has a numeric account ID — e.g. `RADEDW (193483, va3 / …)` gives `(193483, 'va3')`; `RDNA_ENTERPRISE (6821635, ~213)` gives `(6821635, no deployment)`. Locators or names without a numeric ID (e.g. `LD30000 … at zero credits`) are not scan targets. Scan every named account that resolves under the customer's Salesforce IDs **and** earns at least 5% of the revenue of the customer's largest named account; list the rest as "named, low activity — not scanned" with their revenue.
+2. **Fallback.** Only when the Deployments line names no numeric account ID, take the highest-revenue account per Salesforce ID. Highest revenue alone is not a reliable pick: it can land on a dev, partner, or demo account instead of production.
 
 ```sql
 SELECT
@@ -110,17 +113,21 @@ SELECT
     a.snowflake_account_id,
     a.snowflake_deployment,
     a.snowflake_account_name AS locator,
-    ROUND(SUM(m.product_revenue_usd_total), 0) AS revenue_30d_usd
+    ROUND(SUM(m.product_revenue_usd_total), 0) AS revenue_usd
 FROM SNOWSCIENCE.DIMENSIONS.DIM_SNOWFLAKE_ACCOUNTS a
 LEFT JOIN SNOW_CERTIFIED.SNOWFLAKE_ACCOUNT_DEPLOYMENT.AGG_MONTHLY_SNOWFLAKE_ACCOUNT_REVENUE m
     ON a.snowflake_account_id = CAST(m.snowflake_account_id AS INTEGER)
     AND m.month_at >= DATEADD(month, -1, DATE_TRUNC('month', CURRENT_DATE()))
 WHERE a.salesforce_account_id IN ({salesforce_ids})   -- quoted, comma-separated IDs from Step 1U
+  AND a.snowflake_account_id IN ({named_account_ids}) -- named accounts; omit this line for the fallback
 GROUP BY 1, 2, 3, 4, 5
-QUALIFY ROW_NUMBER() OVER (PARTITION BY a.salesforce_account_id ORDER BY revenue_30d_usd DESC NULLS LAST) = 1
+-- fallback only: QUALIFY ROW_NUMBER() OVER (PARTITION BY a.salesforce_account_id ORDER BY revenue_usd DESC NULLS LAST) = 1
+ORDER BY revenue_usd DESC NULLS LAST
 ```
 
-Run Step 4 once per returned Snowflake account; run Step 3 with `salesforce_account_id IN ({salesforce_ids})`. If an ID returns neither a Snowflake account nor any use cases, list it under *Skipped / errors* ("Salesforce ID not found"). If it has use cases but no Snowflake account, keep it and note "no Snowflake account resolved". If the resolved account differs from the primary named on the `ACCOUNT.md` Deployments line, use the resolved one and note the difference.
+Account IDs are only unique within a deployment: when the Deployments line gives a deployment, keep only rows whose `snowflake_deployment` matches it. Any named account that does not come back under the customer's Salesforce IDs goes in the account section as "named in ACCOUNT.md but not mapped to this Salesforce ID".
+
+Run Step 4 once per selected Snowflake account and merge the results into one account section (label each AI object and cluster with its locator); run Step 3 once with `salesforce_account_id IN ({salesforce_ids})`. If an ID returns neither a Snowflake account nor any use cases, list it under *Skipped / errors* ("Salesforce ID not found"). If it has use cases but no Snowflake account, keep it and note "no Snowflake account resolved".
 
 Run 2b for each ID. Group the roll-up by the `ACCOUNT.md` AE; if Salesforce's `ae_name` differs, show both in the account section. Take the header SE from 2b's `se_name` (most common value across the AE's accounts).
 
@@ -128,7 +135,7 @@ Run 2b for each ID. Group the roll-up by the `ACCOUNT.md` AE; if Salesforce's `a
 
 ## Step 3: Pull Open Use Cases
 
-Run in parallel with Step 4.
+Run in parallel with Step 4. The query returns every use case; apply the Use Case Status Reference at the end of this skill when deciding coverage. A `Not In Pursuit` or `Use Case Lost` use case does not count as coverage, but if it matches a cluster, mention it on that gap card ("prior UC: …") rather than ignoring it.
 
 ```sql
 SELECT
@@ -137,7 +144,7 @@ SELECT
     workloads, use_case_acv, last_modified_date,
     is_in_pursuit, is_in_implementation, is_in_production, is_lost, technical_win
 FROM SALES.RAVEN.SDA_USE_CASE
-WHERE salesforce_account_id = '{salesforce_id}'
+WHERE salesforce_account_id = '{salesforce_id}'   -- unattended: salesforce_account_id IN ({salesforce_ids})
 ORDER BY last_modified_date DESC
 ```
 
@@ -147,7 +154,7 @@ ORDER BY last_modified_date DESC
 
 Use **`SNOWSCIENCE.LIVE_OBJECTS.ALL_LIVE_*`** tables — cross-deployment, no schema conversion needed. Run all sub-queries in parallel.
 
-**Exception — 4c, 4e, 4f use `SNOWHOUSE_IMPORT.{DEPLOYMENT_UPPER}.*_ETL_V`.** `ALL_LIVE_SEMANTIC_VIEWS`, `ALL_LIVE_CORTEX_SEARCH_SERVICES`, and `ALL_LIVE_STREAMLITS` are not readable by the `SALES_ENGINEER` role (`does not exist or not authorized`). The Snowhouse views are per-deployment: substitute `{DEPLOYMENT_UPPER}` (e.g. `va2` → `VA2`) and omit `deployment` predicates. They return one row per live instance, so these queries `GROUP BY name` to count distinct objects.
+**Exception — 4c, 4d, 4e, 4f use `SNOWHOUSE_IMPORT.{DEPLOYMENT_UPPER}.*_ETL_V`.** `ALL_LIVE_SEMANTIC_VIEWS`, `ALL_LIVE_CORTEX_SEARCH_SERVICES`, and `ALL_LIVE_STREAMLITS` are not readable by the `SALES_ENGINEER` role (`does not exist or not authorized`), and `ALL_LIVE_AGENTS` has no comment column. The Snowhouse views are per-deployment: substitute `{DEPLOYMENT_UPPER}` (e.g. `va2` → `VA2`) and omit `deployment` predicates. They return one row per live instance, so these queries `GROUP BY name` to count distinct objects.
 
 ### Counting AI Objects: Live vs New vs Updated (4c–4g)
 
@@ -233,7 +240,7 @@ LIMIT 60
 
 ### 4b: Table/View Detail (top clusters — for workload inference)
 
-`ALL_LIVE_TABLES` has no `kind` or `comment` column; use `DEFINITION` for view inference. Use DISTINCT to get one row per unique table name:
+`ALL_LIVE_TABLES` has no `kind` or `comment` column; use `DEFINITION` for view inference. Use DISTINCT to get one row per unique table name. The filters on `USER$%` databases and `SNOWPARK_TEMP_%` tables drop personal sandboxes and Snowpark scratch tables, which otherwise fill the row limit. If the result still hits `LIMIT 300` and one schema dominates (BI tool scratch schemas, tables with a timestamp in the name), rerun excluding that schema and say so in the report — the dominant schema is still reported from 4a.
 
 ```sql
 SELECT DISTINCT
@@ -260,6 +267,8 @@ WHERE t.account_id = {account_id}
   AND t.deleted_on IS NULL
   AND t_old.name IS NULL
   AND db.name != 'SNOWFLAKE'
+  AND db.name NOT LIKE 'USER$%'
+  AND t.name NOT ILIKE 'SNOWPARK_TEMP_%'
 GROUP BY db.name, s.name, t.name
 ORDER BY created_date DESC
 LIMIT 300
@@ -285,7 +294,7 @@ LIMIT 100
 
 ### 4d: Cortex Agents (all — most agents live longer than 30 days)
 
-`ALL_LIVE_AGENTS` has no `comment` column — use the SNOWHOUSE fallback for descriptions:
+Run this Snowhouse query (it includes descriptions). Use the SNOWSCIENCE query below only if the Snowhouse view errors.
 
 ```sql
 SELECT
@@ -303,7 +312,7 @@ ORDER BY last_updated DESC
 LIMIT 100
 ```
 
-Alternatively, use SNOWSCIENCE for existence check only (no description):
+Fallback (SNOWSCIENCE, existence check only — no description):
 
 ```sql
 SELECT
@@ -364,7 +373,7 @@ LIMIT 150
 
 Prioritize named apps (not auto-generated hash names) and apps with a meaningful `comment` or `title`. Workspace-published apps have hash names (`ST98A4…`) but a readable `title`; their `comment` is JSON containing the source workspace path and publisher user ID.
 
-### 4g: Notebooks (last 30 days)
+### 4g: Notebooks (all live)
 
 ```sql
 SELECT
@@ -372,13 +381,13 @@ SELECT
     MIN(nb.created_on)::DATE AS first_created,
     MAX(nb.created_on)::DATE AS last_updated,
     MIN(nb.created_on) >= DATEADD(day, -30, CURRENT_DATE()) AS is_new_30d,
+    MAX(nb.created_on) >= DATEADD(day, -30, CURRENT_DATE()) AS updated_30d,
     MAX(nb.sf_sit_comment) AS comment
 FROM SNOWSCIENCE.LIVE_OBJECTS.ALL_LIVE_NOTEBOOKS nb
 WHERE nb.account_id = {account_id}
   AND nb.deployment = '{deployment}'
 GROUP BY nb.name
 HAVING COUNT_IF(nb.deleted_on IS NULL) > 0
-   AND MAX(nb.created_on) >= DATEADD(day, -30, CURRENT_DATE())
 ORDER BY last_updated DESC
 LIMIT 50
 ```
@@ -466,7 +475,7 @@ Produce a single self-contained HTML file following Snowflake brand guidelines.
 
 ```
 1. Sticky header: account name, AE, deployment, date, total gap eACV
-2. Quick stats: new object counts by type, gaps found, active UC pipeline
+2. Quick stats: new object counts by type (tables, views and dynamic tables are one combined count — 4a cannot split them), gaps found, active UC pipeline
 3. AI Inventory: Agents | Search services | Semantic Views | Streamlit apps (collapsible)
 4. Object Clusters: table by database/schema, count, date range, inferred workload
 5. Gap Analysis: one card per gap
@@ -481,7 +490,7 @@ Produce a single self-contained HTML file following Snowflake brand guidelines.
 - Signal evidence: bulleted object names
 - Description: 2–3 sentences for Salesforce UC Description field
 - Workload | Likely Owner | Suggested Stage | eACV range
-- Prioritized Feature (Cortex Agents / Document AI / Cortex Search / Cortex Analyst)
+- Prioritized Feature (Cortex Agents / Document AI / Cortex Search / Cortex Analyst, or another Snowflake feature when none of these fit, e.g. Snowflake ML, Dynamic Tables)
 
 ### Styling
 
