@@ -94,9 +94,25 @@ Use **`SNOWSCIENCE.LIVE_OBJECTS.ALL_LIVE_*`** tables — cross-deployment, no sc
 
 **Exception — 4c, 4e, 4f use `SNOWHOUSE_IMPORT.{DEPLOYMENT_UPPER}.*_ETL_V`.** `ALL_LIVE_SEMANTIC_VIEWS`, `ALL_LIVE_CORTEX_SEARCH_SERVICES`, and `ALL_LIVE_STREAMLITS` are not readable by the `SALES_ENGINEER` role (`does not exist or not authorized`). The Snowhouse views are per-deployment: substitute `{DEPLOYMENT_UPPER}` (e.g. `va2` → `VA2`) and omit `deployment` predicates. They return one row per live instance, so these queries `GROUP BY name` to count distinct objects.
 
-### Drop-and-Recreate Filter Pattern
+### Counting AI Objects: Live vs New vs Updated (4c–4g)
 
-Objects that are dropped and immediately recreated create noise (they look "new" but are not). For every object type, apply this anti-join:
+Most teams maintain semantic views, agents, search services, Streamlit apps and notebooks with `CREATE OR REPLACE`. Every replace leaves a deleted older row behind, so an anti-join that drops any name with an older deleted version **hides long-lived objects that are still in use** — on one account it reduced 26 live semantic views to 2 and removed its only agent, which erased the main gap finding.
+
+Instead, group every version of an object by name and derive status from its history:
+
+```sql
+-- Pattern for 4c–4g: one row per object name across all versions (live and deleted)
+GROUP BY obj.name
+HAVING COUNT_IF(obj.deleted_on IS NULL) > 0                          -- live: at least one undeleted version
+-- MIN(obj.created_on) >= DATEADD(day, -30, CURRENT_DATE())  AS is_new_30d   -- first-ever version is recent = genuinely new
+-- MAX(obj.created_on) >= DATEADD(day, -30, CURRENT_DATE())  AS updated_30d  -- replaced/rebuilt recently = active development
+```
+
+Report `is_new_30d` objects as new work, `updated_30d` (but not new) objects as active development, and the full live list as the AI inventory. Nightly drop-and-recreate jobs stay out of "new" because their first version is old.
+
+### Drop-and-Recreate Filter Pattern (tables only — 4a, 4b)
+
+For tables, daily CDC pipelines drop and recreate the same table, which makes it look new every day. 4a/4b keep this anti-join to exclude those rebuilds:
 
 ```sql
 -- Join this LEFT OUTER JOIN to the same table (suffixed _old) to exclude drop-and-recreate:
@@ -199,19 +215,16 @@ LIMIT 300
 ```sql
 SELECT
     sv.name AS semantic_view_name,
-    MIN(sv.created_on)::DATE AS created_date,
-    MAX(sv.comment) AS comment
+    MIN(sv.created_on)::DATE AS first_created,
+    MAX(sv.created_on)::DATE AS last_updated,
+    MIN(sv.created_on) >= DATEADD(day, -30, CURRENT_DATE()) AS is_new_30d,
+    MAX(sv.created_on) >= DATEADD(day, -30, CURRENT_DATE()) AS updated_30d,
+    MAX(IFF(sv.deleted_on IS NULL, sv.comment, NULL)) AS comment
 FROM SNOWHOUSE_IMPORT.{DEPLOYMENT_UPPER}.SEMANTIC_VIEW_ETL_V sv
-LEFT JOIN SNOWHOUSE_IMPORT.{DEPLOYMENT_UPPER}.SEMANTIC_VIEW_ETL_V sv_old
-    ON sv.account_id = sv_old.account_id
-    AND sv.name = sv_old.name
-    AND sv_old.deleted_on IS NOT NULL
-    AND sv_old.created_on < DATEADD(day, -30, CURRENT_DATE())
 WHERE sv.account_id = {account_id}
-  AND sv.deleted_on IS NULL
-  AND sv_old.name IS NULL
 GROUP BY sv.name
-ORDER BY created_date DESC
+HAVING COUNT_IF(sv.deleted_on IS NULL) > 0
+ORDER BY last_updated DESC
 LIMIT 100
 ```
 
@@ -220,29 +233,35 @@ LIMIT 100
 `ALL_LIVE_AGENTS` has no `comment` column — use the SNOWHOUSE fallback for descriptions:
 
 ```sql
--- SNOWHOUSE fallback (includes description/comment):
-SELECT ca.name, ca.created_on::DATE AS created_date, ca.comment AS description
+SELECT
+    ca.name,
+    MIN(ca.created_on)::DATE AS first_created,
+    MAX(ca.created_on)::DATE AS last_updated,
+    MIN(ca.created_on) >= DATEADD(day, -30, CURRENT_DATE()) AS is_new_30d,
+    MAX(ca.created_on) >= DATEADD(day, -30, CURRENT_DATE()) AS updated_30d,
+    MAX(IFF(ca.deleted_on IS NULL, ca.comment, NULL)) AS description
 FROM SNOWHOUSE_IMPORT.{DEPLOYMENT_UPPER}.CORTEX_AGENT_ETL_V ca
-WHERE ca.account_id = {account_id} AND ca.deleted_on IS NULL
-ORDER BY ca.created_on DESC LIMIT 100
+WHERE ca.account_id = {account_id}
+GROUP BY ca.name
+HAVING COUNT_IF(ca.deleted_on IS NULL) > 0
+ORDER BY last_updated DESC
+LIMIT 100
 ```
 
 Alternatively, use SNOWSCIENCE for existence check only (no description):
 
 ```sql
-SELECT DISTINCT ag.name, MAX(ag.created_on)::DATE AS created_date
+SELECT
+    ag.name,
+    MIN(ag.created_on)::DATE AS first_created,
+    MAX(ag.created_on)::DATE AS last_updated,
+    MIN(ag.created_on) >= DATEADD(day, -30, CURRENT_DATE()) AS is_new_30d
 FROM SNOWSCIENCE.LIVE_OBJECTS.ALL_LIVE_AGENTS ag
-LEFT JOIN SNOWSCIENCE.LIVE_OBJECTS.ALL_LIVE_AGENTS ag_old
-    ON ag.account_id = ag_old.account_id AND ag.deployment = ag_old.deployment
-    AND ag.name = ag_old.name
-    AND ag_old.deleted_on IS NOT NULL
-    AND ag_old.created_on < DATEADD(day, -30, CURRENT_DATE())
 WHERE ag.account_id = {account_id}
   AND ag.deployment = '{deployment}'
-  AND ag.deleted_on IS NULL
-  AND ag_old.name IS NULL
 GROUP BY ag.name
-ORDER BY created_date DESC
+HAVING COUNT_IF(ag.deleted_on IS NULL) > 0
+ORDER BY last_updated DESC
 LIMIT 100
 ```
 
@@ -251,20 +270,17 @@ LIMIT 100
 ```sql
 SELECT
     cs.name AS service_name,
-    MIN(cs.created_on)::DATE AS created_date,
-    COUNT(DISTINCT cs.id) AS live_instances,
-    MAX(cs.comment) AS comment
+    MIN(cs.created_on)::DATE AS first_created,
+    MAX(cs.created_on)::DATE AS last_updated,
+    MIN(cs.created_on) >= DATEADD(day, -30, CURRENT_DATE()) AS is_new_30d,
+    MAX(cs.created_on) >= DATEADD(day, -30, CURRENT_DATE()) AS updated_30d,
+    COUNT(DISTINCT IFF(cs.deleted_on IS NULL, cs.id, NULL)) AS live_instances,
+    MAX(IFF(cs.deleted_on IS NULL, cs.comment, NULL)) AS comment
 FROM SNOWHOUSE_IMPORT.{DEPLOYMENT_UPPER}.CORTEX_SEARCH_SERVICE_ETL_V cs
-LEFT JOIN SNOWHOUSE_IMPORT.{DEPLOYMENT_UPPER}.CORTEX_SEARCH_SERVICE_ETL_V cs_old
-    ON cs.account_id = cs_old.account_id
-    AND cs.name = cs_old.name
-    AND cs_old.deleted_on IS NOT NULL
-    AND cs_old.created_on < DATEADD(day, -30, CURRENT_DATE())
 WHERE cs.account_id = {account_id}
-  AND cs.deleted_on IS NULL
-  AND cs_old.name IS NULL
 GROUP BY cs.name
-ORDER BY created_date DESC
+HAVING COUNT_IF(cs.deleted_on IS NULL) > 0
+ORDER BY last_updated DESC
 LIMIT 100
 ```
 
@@ -277,20 +293,17 @@ Cross-deployment alternative: `SNOWSCIENCE.LLM.CORTEX_SEARCH_SERVICES` (`account
 ```sql
 SELECT
     sl.name AS app_name,
-    MIN(sl.created_on)::DATE AS created_date,
-    MAX(sl.comment) AS comment,
-    MAX(sl.title) AS title
+    MIN(sl.created_on)::DATE AS first_created,
+    MAX(sl.created_on)::DATE AS last_updated,
+    MIN(sl.created_on) >= DATEADD(day, -30, CURRENT_DATE()) AS is_new_30d,
+    MAX(sl.created_on) >= DATEADD(day, -30, CURRENT_DATE()) AS updated_30d,
+    MAX(IFF(sl.deleted_on IS NULL, sl.comment, NULL)) AS comment,
+    MAX(IFF(sl.deleted_on IS NULL, sl.title, NULL)) AS title
 FROM SNOWHOUSE_IMPORT.{DEPLOYMENT_UPPER}.STREAMLIT_ETL_V sl
-LEFT JOIN SNOWHOUSE_IMPORT.{DEPLOYMENT_UPPER}.STREAMLIT_ETL_V sl_old
-    ON sl.account_id = sl_old.account_id
-    AND sl.name = sl_old.name
-    AND sl_old.deleted_on IS NOT NULL
-    AND sl_old.created_on < DATEADD(day, -30, CURRENT_DATE())
 WHERE sl.account_id = {account_id}
-  AND sl.deleted_on IS NULL
-  AND sl_old.name IS NULL
 GROUP BY sl.name
-ORDER BY created_date DESC
+HAVING COUNT_IF(sl.deleted_on IS NULL) > 0
+ORDER BY last_updated DESC
 LIMIT 150
 ```
 
@@ -301,21 +314,17 @@ Prioritize named apps (not auto-generated hash names) and apps with a meaningful
 ```sql
 SELECT
     nb.name AS notebook_name,
-    MIN(nb.created_on)::DATE AS created_date,
+    MIN(nb.created_on)::DATE AS first_created,
+    MAX(nb.created_on)::DATE AS last_updated,
+    MIN(nb.created_on) >= DATEADD(day, -30, CURRENT_DATE()) AS is_new_30d,
     MAX(nb.sf_sit_comment) AS comment
 FROM SNOWSCIENCE.LIVE_OBJECTS.ALL_LIVE_NOTEBOOKS nb
-LEFT JOIN SNOWSCIENCE.LIVE_OBJECTS.ALL_LIVE_NOTEBOOKS nb_old
-    ON nb.account_id = nb_old.account_id AND nb.deployment = nb_old.deployment
-    AND nb.name = nb_old.name
-    AND nb_old.deleted_on IS NOT NULL
-    AND nb_old.created_on < DATEADD(day, -30, CURRENT_DATE())
 WHERE nb.account_id = {account_id}
   AND nb.deployment = '{deployment}'
-  AND nb.created_on >= DATEADD(day, -30, CURRENT_TIMESTAMP())
-  AND nb.deleted_on IS NULL
-  AND nb_old.name IS NULL
 GROUP BY nb.name
-ORDER BY created_date DESC
+HAVING COUNT_IF(nb.deleted_on IS NULL) > 0
+   AND MAX(nb.created_on) >= DATEADD(day, -30, CURRENT_DATE())
+ORDER BY last_updated DESC
 LIMIT 50
 ```
 
@@ -369,7 +378,7 @@ If a `SNOWSCIENCE.LIVE_OBJECTS.ALL_LIVE_<TYPE>` table does not exist or returns 
 | `ALL_LIVE_NOTEBOOKS` | `NOTEBOOK_ETL_V` |
 | `ALL_LIVE_DOCUMENT_UNDERSTANDING` | none — use the usage-based 4h query (`LLM.CORTEX_LLM_PARSE_DOC_CREDITS` + `LLM.CORTEX_LLM_TOKEN_CREDITS`) |
 
-Queries 4c, 4e, and 4f above already use the Snowhouse views with the drop-and-recreate filter applied. For other types, the Snowhouse fallback does not include that filter unless you add it — results may contain more noise.
+Queries 4c–4g above already use the live/new/updated pattern. For other types, the Snowhouse fallback does not include any recreate handling unless you add it — results may contain more noise.
 
 ---
 
