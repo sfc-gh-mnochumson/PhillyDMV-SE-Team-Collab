@@ -28,6 +28,8 @@ Unattended parameters (all supplied by the invoking prompt — never hard-code t
 
 **Unattended rules:** never call `ask_user_question`, never stop at a stopping point, and never stop the run because one account failed. If a sub-query fails, apply Query Troubleshooting once, then record the gap ("Streamlit inventory unavailable: <error>") in that account's section and continue; if Step 2U or Step 3 fails, add the account to *Skipped / errors* and move on. If an unattended run has neither `accounts_dir` nor `accounts`, write nothing and report "no accounts_dir supplied" in the summary. All Snowflake access is read-only. Pass these rules on to any subagent that processes an account.
 
+**Avoid the shell in unattended mode.** Shell commands are what usually trigger approval prompts, which stall an unattended run. Use only SQL (read-only `SELECT`), file read/list/search tools, and the file-write tool, which creates any missing folders. Write the HTML directly with the file-write tool rather than generating it with a script.
+
 ---
 
 ## Step 1: Gather Account Name (interactive)
