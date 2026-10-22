@@ -1,6 +1,6 @@
 ---
 name: account_use_case_gap
-description: "Snowflake account use case gap analysis. Pulls open Salesforce use cases and ALL new Snowflake objects created in the last 30 days (tables, views, dynamic tables, semantic views, Cortex Agents, Cortex Search services, Streamlit apps, Notebooks, Document AI), clusters them by workload, cross-references against existing use cases, identifies gaps, and generates an HTML gap analysis report with recommended use case names, descriptions, and next steps. Use when: use case gap analysis, new objects vs use cases, UC gap, find missing use cases, account review, new AI workloads, what's been built, identify new use cases, account_use_case_gap."
+description: "Snowflake account use case gap analysis. Pulls open Salesforce use cases and ALL new Snowflake objects created in the last 30 days (tables, views, dynamic tables, semantic views, Cortex Agents, Cortex Search services, Streamlit apps, Notebooks, Document AI), clusters them by workload, cross-references against existing use cases, identifies gaps, and generates an HTML gap analysis report with recommended use case names, descriptions, and next steps. Supports an unattended mode (for automations) that runs a whole book of business from a directory of ACCOUNT.md files and writes one roll-up per AE. Use when: use case gap analysis, new objects vs use cases, UC gap, find missing use cases, account review, new AI workloads, what's been built, identify new use cases, account_use_case_gap."
 ---
 
 # Account Use Case Gap Analysis
@@ -13,9 +13,39 @@ Output: a complete HTML gap analysis report with eACV recommendations.
 
 ---
 
-## Step 1: Gather Account Name
+## Run Modes
+
+| Mode | Triggered when | Account input | Output |
+|---|---|---|---|
+| **Interactive** (default) | The request does not supply an accounts directory and does not ask for an unattended run | Step 1 asks for one account name | One report per account (Step 6) |
+| **Unattended** | The request supplies `accounts_dir` or an explicit `accounts` list, or says it is unattended / non-interactive / an automation | Step 1U reads `ACCOUNT.md` files | One roll-up per AE (Step 6U) |
+
+Unattended parameters (all supplied by the invoking prompt — never hard-code them in this skill):
+
+- `accounts_dir` (required) — directory whose subfolders each describe one customer in an `ACCOUNT.md`
+- `output_dir` (optional) — where the per-AE roll-ups go; default `accounts_dir`. Interactive runs also honour it in place of the Step 6 default path.
+- `accounts` (optional) — subset of folder names under `accounts_dir` to run; default all. If given without `accounts_dir`, treat each entry as a path to a folder containing `ACCOUNT.md`; list any entry that can't be resolved under *Skipped / errors*.
+
+**Unattended rules:** never call `ask_user_question`, never stop at a stopping point, and never stop the run because one account failed. If a sub-query fails, apply Query Troubleshooting once, then record the gap ("Streamlit inventory unavailable: <error>") in that account's section and continue; if Step 2U or Step 3 fails, add the account to *Skipped / errors* and move on. If an unattended run has neither `accounts_dir` nor `accounts`, write nothing and report "no accounts_dir supplied" in the summary. All Snowflake access is read-only. Pass these rules on to any subagent that processes an account.
+
+---
+
+## Step 1: Gather Account Name (interactive)
 
 Use `ask_user_question` (type: "text") to collect only the **customer/account name** (company name to search). No other inputs needed — AE name and account selection are resolved automatically.
+
+## Step 1U: Load Accounts (unattended)
+
+List the subfolders of `accounts_dir` that contain an `ACCOUNT.md`; skip any folder without one. From the header block of each `ACCOUNT.md` read:
+
+- **Display name** — the first `# ` heading
+- **Salesforce ID(s)** — the 18-character IDs on the `Salesforce ID` / `Salesforce IDs` line that identify this customer (an account may list more than one, e.g. two related companies). Ignore any ID the line marks as excluded, unrelated, wrong, or not this customer — e.g. in `0013100001AAAAAAAA (unrelated account named "Acme" — 001AB00000BBBBBBBB — is excluded)`, use only the first ID.
+- **AE** — the `AE:` line with any trailing parenthetical note removed (`Jane Doe (both)` → `Jane Doe`); this is the grouping key for Step 6U. If there is no AE line, group the account under `Unassigned`.
+- **Deployments** — the `Deployments` line, used only as a cross-check in Step 2U
+
+If a file has no Salesforce ID, add the account to *Skipped / errors* ("no Salesforce ID in ACCOUNT.md") and move on. Do not fall back to name search in unattended mode — name matches pull in look-alike Salesforce records that an `ACCOUNT.md` may deliberately exclude.
+
+Then run Steps 2U–5 for each account. For large books, process accounts in parallel subagents when available; each returns a compact per-account record (resolved account, AI inventory counts, clusters, gap cards, covered UCs, next steps) so the parent only holds records, not raw query output. Keep any intermediate files in a temp directory, not in `output_dir`.
 
 ---
 
@@ -68,6 +98,31 @@ LIMIT 1
 Use `ae_name` and `se_name` in the report header. If not found, omit.
 
 Proceed immediately to Step 3 — no user prompt needed.
+
+## Step 2U: Resolve by Salesforce ID (unattended)
+
+Replace the name searches in 2a with the IDs from `ACCOUNT.md`, and take the highest-revenue Snowflake account **per Salesforce ID**:
+
+```sql
+SELECT
+    a.salesforce_account_id,
+    a.salesforce_account_name,
+    a.snowflake_account_id,
+    a.snowflake_deployment,
+    a.snowflake_account_name AS locator,
+    ROUND(SUM(m.product_revenue_usd_total), 0) AS revenue_30d_usd
+FROM SNOWSCIENCE.DIMENSIONS.DIM_SNOWFLAKE_ACCOUNTS a
+LEFT JOIN SNOW_CERTIFIED.SNOWFLAKE_ACCOUNT_DEPLOYMENT.AGG_MONTHLY_SNOWFLAKE_ACCOUNT_REVENUE m
+    ON a.snowflake_account_id = CAST(m.snowflake_account_id AS INTEGER)
+    AND m.month_at >= DATEADD(month, -1, DATE_TRUNC('month', CURRENT_DATE()))
+WHERE a.salesforce_account_id IN ({salesforce_ids})   -- quoted, comma-separated IDs from Step 1U
+GROUP BY 1, 2, 3, 4, 5
+QUALIFY ROW_NUMBER() OVER (PARTITION BY a.salesforce_account_id ORDER BY revenue_30d_usd DESC NULLS LAST) = 1
+```
+
+Run Step 4 once per returned Snowflake account; run Step 3 with `salesforce_account_id IN ({salesforce_ids})`. If an ID returns neither a Snowflake account nor any use cases, list it under *Skipped / errors* ("Salesforce ID not found"). If it has use cases but no Snowflake account, keep it and note "no Snowflake account resolved". If the resolved account differs from the primary named on the `ACCOUNT.md` Deployments line, use the resolved one and note the difference.
+
+Run 2b for each ID. Group the roll-up by the `ACCOUNT.md` AE; if Salesforce's `ae_name` differs, show both in the account section. Take the header SE from 2b's `se_name` (most common value across the AE's accounts).
 
 ---
 
@@ -405,7 +460,7 @@ For each cluster: cluster name, evidence list, workload type, likely owner, stag
 
 Produce a single self-contained HTML file following Snowflake brand guidelines.
 
-**File path**: `~/Documents/coco/customers/{account_name}/use_case_gap_analysis_{YYYYMMDD}.html`
+**File path** (interactive): `~/Documents/coco/customers/{account_name}/use_case_gap_analysis_{YYYYMMDD}.html`, or `{output_dir}/use_case_gap_analysis_{account_slug}_{YYYYMMDD}.html` if `output_dir` was given (`account_slug` = account name, slugged the same way as `ae_slug` in Step 6U). In unattended mode, use Step 6U instead.
 
 ### Report Sections
 
@@ -434,18 +489,37 @@ Produce a single self-contained HTML file following Snowflake brand guidelines.
 --sf-blue: #29b5e8  |  --sf-dark: #1a2332  |  VERY HIGH: #dc2626  |  HIGH: #ea580c  |  MEDIUM: #ca8a04
 ```
 
+## Step 6U: Generate Per-AE Roll-ups (unattended)
+
+Write one self-contained HTML file per AE (same styling and gap card fields as Step 6):
+
+**File path**: `{output_dir}/use_case_gap_{ae_slug}_{YYYYMMDD}.html` — `ae_slug` is the AE name lowercased, with each run of non-alphanumeric characters replaced by `_` and leading/trailing `_` trimmed (e.g. `jane_doe`). A rerun on the same day overwrites that day's file; never modify files with other names or dates.
+
+Totals: report gap eACV as a range; sum the low ends and the high ends separately, and sort account sections by the high end.
+
+```
+1. Header: AE, SE, date, accounts covered, total gaps, total gap eACV
+2. Account summary table: account | resolved Snowflake account(s) | gaps | gap eACV | new AI objects (30d, `is_new_30d` count across 4c–4g) | active UCs
+3. One collapsible section per account (largest gap eACV high end first) containing Step 6 sections 2–7
+4. Skipped / errors: account | reason
+```
+
 ---
 
 ## Step 7: Present and Save
 
 Save the HTML file. Present chat summary: object counts by type, gap count, eACV range, file path.
 
+In unattended mode, end with a summary readable in an automation run log: each file written, accounts processed vs skipped (with reasons), and gap count + gap eACV per AE.
+
 ---
 
-## Stopping Points
+## Stopping Points (interactive only)
 
 - ✋ After Step 1 — wait for account name only
 - ✋ If Step 2 returns no matching accounts — inform user and ask for alternate spelling
+
+Unattended mode has no stopping points (see Run Modes).
 
 ---
 
