@@ -54,7 +54,7 @@ List the subfolders of `accounts_dir` that contain an `ACCOUNT.md` using a file 
 
 If a file has no Salesforce ID, add the account to *Skipped / errors* ("no Salesforce ID in ACCOUNT.md") and move on. Do not fall back to name search in unattended mode — name matches pull in look-alike Salesforce records that an `ACCOUNT.md` may deliberately exclude.
 
-Then run Steps 2U–5 for each account. For large books, process accounts in parallel subagents when available. Each subagent returns its compact per-account record (resolved accounts, AI inventory counts, clusters, gap cards, covered UCs, next steps, errors) **in its final reply** — it writes no files — so the parent holds only records, not raw query output, and the only file writes in the run are the Step 6U roll-ups. The parent waits for every subagent to finish; it does not cancel a subagent for being slow. A subagent that fails is listed under *Skipped / errors* with its error.
+Then run Steps 2U–5 for each account. For large books, process accounts in parallel subagents when available. Each subagent returns its compact per-account record (resolved accounts and not-scanned accounts with reasons, AI inventory counts, clusters, gap cards, open use cases each with a one-line telemetry note for its Salesforce update, a 2–4 sentence what-changed headline, any risk, next steps, errors) **in its final reply** — it writes no files — so the parent holds only records, not raw query output, and the only file writes in the run are the Step 6U roll-ups. The parent waits for every subagent to finish; it does not cancel a subagent for being slow. A subagent that fails is listed under *Skipped / errors* with its error.
 
 ---
 
@@ -509,18 +509,23 @@ Produce a single self-contained HTML file following Snowflake brand guidelines.
 
 ## Step 6U: Generate Per-AE Roll-ups (unattended)
 
-Write one self-contained HTML file per AE (same styling and gap card fields as Step 6):
+Write one self-contained HTML file per AE, built from **`report_template.html`** in this skill's folder. Read the template, keep its `<style>` block unchanged, follow its block structure and class vocabulary, and replace every `{{PLACEHOLDER}}`. Do not invent a different layout.
 
 **File path**: `{output_dir}/use_case_gap_{ae_slug}_{YYYYMMDD}.html` — `ae_slug` is the AE name lowercased, with each run of non-alphanumeric characters replaced by `_` and leading/trailing `_` trimmed (e.g. `jane_doe`). A rerun on the same day overwrites that day's file; never modify files with other names or dates.
 
-Totals: report gap eACV as a range; sum the low ends and the high ends separately, and sort account sections by the high end.
+Totals: report gap eACV as a range; sum the low ends and the high ends separately.
 
-```
-1. Header: AE, SE, date, accounts covered, total gaps, total gap eACV
-2. Account summary table: account | resolved Snowflake account(s) | gaps | gap eACV | new AI objects (30d, `is_new_30d` count across 4c–4g) | active UCs
-3. One collapsible section per account (largest gap eACV high end first) containing Step 6 sections 2–7
-4. Skipped / errors: account | reason
-```
+**Prior cycle:** find the most recent earlier `use_case_gap_{ae_slug}_*.html` in `output_dir`. Its date is `{{PREVIOUS_RUN_DATE}}` (if there is none, write "Since the last 30 days" in the headline). A gap whose suggested UC name or core objects also appear in that file gets the *Flagged in a prior cycle* tag; others get *New this cycle*.
+
+**Part 1 — Current use cases** (one section per account, alphabetical):
+- Include only open use cases (`In Pursuit`, `Implementation`, `Production` below Stage 7); count Stage 7 / Deployed ones in "deployed hidden" and leave them out of the table.
+- Headline: 2–4 sentences on what changed in the account since the prior cycle, from Step 4 telemetry (new or updated AI objects, new clusters, environment moves such as DEV → QA).
+- Risk paragraph only when there is a concrete risk (stage overrun, passed go-live date, a gap that competes with an open UC); otherwise omit it.
+- Salesforce update cell: `MM.DD.YYYY <SE initials>- ` followed by 1–3 sentences tying that use case to telemetry evidence from Step 4 (object names and dates). If Step 4 shows nothing for the use case, say so plainly ("No related objects changed in the last 30 days") rather than inventing progress.
+
+**Part 2 — Recommended new use cases** (one section per account, largest gap eACV high end first; cards Very High → High → Medium): one card per Step 5 gap with the Gap Card Fields from Step 6, using the template's card markup.
+
+**Footer:** sources and date, accounts not scanned (with reason from Step 2U), and Skipped / errors (or "None").
 
 ---
 

@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Use Case Gap Brief — {AE_NAME} — {DATE}</title>
+<style>
+:root { color-scheme: light dark; }
+* { box-sizing: border-box; }
+body { margin: 0; font-family: -apple-system, 'Segoe UI', system-ui, sans-serif; font-size: 14px; line-height: 1.55;
+  color: light-dark(#1e293b, #e2e8f0); background: light-dark(#f0f4f8, #0f172a); }
+.wrap { max-width: 1040px; width: 100%; margin: 0 auto; padding: clamp(14px, 4vw, 28px); }
+header.top { background: light-dark(#1a2332, #020617); color: #fff; padding: clamp(16px, 4vw, 24px) clamp(14px, 4vw, 28px); }
+header.top .eyebrow { font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: #94a3b8; }
+header.top h1 { margin: 4px 0 6px; font-size: clamp(20px, 4vw, 26px); }
+header.top .meta { font-size: 12px; color: #cbd5e1; }
+header.top .meta b { color: #29b5e8; font-weight: 600; }
+.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin: 20px 0; }
+.stat { background: light-dark(#fff, #1e293b); border: 1px solid light-dark(#e2e8f0, #334155); border-radius: 8px; padding: 14px; text-align: center; }
+.stat .v { font-size: 24px; font-weight: 700; color: #29b5e8; }
+.stat .l { font-size: 11px; text-transform: uppercase; color: light-dark(#64748b, #94a3b8); margin-top: 2px; }
+.note { background: light-dark(#eff6ff, #172554); border-left: 3px solid #29b5e8; padding: 10px 14px; border-radius: 4px; font-size: 13px; margin-bottom: 8px; }
+h2.part { margin: 34px 0 6px; font-size: 20px; color: light-dark(#0f172a, #f1f5f9); }
+p.part-sub { margin: 0 0 14px; color: light-dark(#64748b, #94a3b8); font-size: 13px; }
+nav.toc { font-size: 13px; margin: 8px 0 0; }
+nav.toc a { color: light-dark(#0369a1, #7dd3fc); margin-right: 14px; white-space: nowrap; }
+section.acct { background: light-dark(#fff, #1e293b); border: 1px solid light-dark(#e2e8f0, #334155); border-radius: 8px; margin: 16px 0; overflow: hidden; }
+section.acct > h3 { margin: 0; padding: 12px 16px; background: light-dark(#2d3f55, #334155); color: #fff; font-size: 15px; display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px; }
+section.acct > h3 span { font-weight: 400; font-size: 12px; color: #cbd5e1; }
+.acct-body { padding: 14px 16px; }
+.headline { font-size: 13px; margin: 0 0 12px; color: light-dark(#334155, #cbd5e1); }
+.risk { background: light-dark(#fef2f2, #450a0a); border-left: 3px solid #dc2626; padding: 8px 12px; font-size: 13px; margin: 0 0 12px; border-radius: 4px; }
+.table-wrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th { text-align: left; font-size: 11px; text-transform: uppercase; color: light-dark(#64748b, #94a3b8); background: light-dark(#f8fafc, #0f172a); padding: 8px 10px; border-bottom: 2px solid light-dark(#e2e8f0, #334155); white-space: nowrap; }
+td { padding: 10px; border-bottom: 1px solid light-dark(#e2e8f0, #334155); vertical-align: top; }
+td.uc { font-weight: 600; min-width: 180px; }
+td.num { white-space: nowrap; }
+.sf { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; background: light-dark(#f1f5f9, #0f172a); border: 1px solid light-dark(#e2e8f0, #334155); border-radius: 4px; padding: 8px 10px; white-space: pre-wrap; word-break: break-word; min-width: 260px; user-select: all; }
+.pill { display: inline-block; border-radius: 4px; padding: 2px 8px; font-size: 11px; font-weight: 600; white-space: nowrap; }
+.sp { background: light-dark(#fef3c7, #78350f); color: light-dark(#92400e, #fde68a); }
+.pr { background: light-dark(#dcfce7, #14532d); color: light-dark(#166534, #bbf7d0); }
+.im { background: light-dark(#e0e7ff, #312e81); color: light-dark(#3730a3, #c7d2fe); }
+.card { border: 1px solid light-dark(#e2e8f0, #334155); border-radius: 8px; padding: 14px; margin: 0 0 12px; }
+.card:last-child { margin-bottom: 0; }
+.badge { display: inline-block; color: #fff; border-radius: 4px; padding: 3px 9px; font-size: 11px; font-weight: 700; text-transform: uppercase; }
+.badge.vh { background: #dc2626; } .badge.hi { background: #ea580c; } .badge.med { background: #ca8a04; }
+.tag { display: inline-block; border-radius: 4px; padding: 2px 8px; font-size: 11px; font-weight: 600; margin-left: 6px; }
+.tag.new { background: light-dark(#dbeafe, #1e3a8a); color: light-dark(#1e40af, #bfdbfe); }
+.tag.car { background: light-dark(#f1f5f9, #334155); color: light-dark(#475569, #cbd5e1); }
+.card h4 { margin: 8px 0 6px; font-size: 15px; }
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 8px 16px; margin: 10px 0; font-size: 12px; }
+.grid div b { display: block; font-size: 10px; text-transform: uppercase; color: light-dark(#64748b, #94a3b8); font-weight: 600; }
+.label { font-size: 10px; text-transform: uppercase; font-weight: 600; color: light-dark(#64748b, #94a3b8); margin: 10px 0 4px; }
+.evidence { font-size: 12px; color: light-dark(#334155, #cbd5e1); margin: 0; }
+.none { font-size: 13px; color: light-dark(#64748b, #94a3b8); font-style: italic; margin: 0; }
+footer { text-align: center; font-size: 11px; color: light-dark(#64748b, #94a3b8); padding: 24px 0 8px; }
+</style>
+</head>
+<body>
+<!--
+  Template for Step 6U (unattended per-AE roll-up). Copy this file, keep the <style> block as-is,
+  and replace every {PLACEHOLDER}. Repeat the marked blocks once per account / use case / gap.
+  Self-contained: no external scripts, fonts, images or links to load; no inline event handlers.
+
+  Class vocabulary:
+    status pill  <span class='pill sp'>In Pursuit</span> | <span class='pill im'>Implementation</span> | <span class='pill pr'>Production</span>
+    priority     <span class="badge vh">Very High</span> | <span class="badge hi">High</span> | <span class="badge med">Medium</span>
+    cycle tag    <span class='tag new'>New this cycle</span> | <span class='tag car'>Flagged in a prior cycle</span>
+-->
+<header class="top"><div class="eyebrow">Use Case Gap Brief · Internal</div><h1>{AE_NAME} — Book of Business</h1>
+<div class="meta">Prepared by <b>{SE_NAME}</b> (SE) · {DATE_LONG} · Accounts: {ACCOUNT_LIST}</div></header>
+<div class="wrap">
+<div class="stats">
+<div class="stat"><div class="v">{OPEN_UC_COUNT}</div><div class="l">Open use cases</div></div>
+<div class="stat"><div class="v">{OPEN_EACV}</div><div class="l">Open eACV</div></div>
+<div class="stat"><div class="v">{GAP_COUNT}</div><div class="l">New UCs recommended</div></div>
+<div class="stat"><div class="v">{VERY_HIGH_COUNT}</div><div class="l">Very High priority</div></div>
+<div class="stat"><div class="v">{GAP_EACV_RANGE}</div><div class="l">Est. new eACV</div></div>
+</div>
+<div class="note">{AE_FIRST_NAME} — Part 1 lists every open (not yet Deployed) use case in Salesforce for your accounts, with a ready-to-paste update for the Next Steps field. Part 2 lists workloads we can see being built in Snowflake that have no use case yet, with a Salesforce-ready description and the evidence behind each one. eACV figures for new use cases are estimates.</div>
+
+<h2 class="part" id="current">Part 1 — Current use cases</h2>
+<p class="part-sub">Open use cases as of {DATE_LONG} from Salesforce; {DEPLOYED_COUNT} already-Deployed (Stage 7) use cases are left out. Update text is based on Snowflake telemetry from the last 30 days.</p>
+<nav class="toc"><!-- one link per account --><a href='#cur-{ACCT_SLUG}'>{ACCOUNT_NAME}</a></nav>
+
+<!-- BEGIN per-account Part 1 block -->
+<section class="acct" id="cur-{ACCT_SLUG}">
+<h3>{ACCOUNT_NAME}<span>{OPEN_COUNT} open · {ACCT_OPEN_EACV} eACV · {DEPLOYED_HIDDEN} deployed hidden</span></h3>
+<div class="acct-body"><p class="headline"><b>Since {PREVIOUS_RUN_DATE}:</b> {WHAT_CHANGED_2_TO_4_SENTENCES}</p><p class='risk'><b>Risk:</b> {RISK_OR_OMIT_PARAGRAPH}</p>
+<div class="table-wrap"><table><thead><tr><th>Use case</th><th>Stage</th><th>Status</th><th>eACV</th><th>Salesforce update (copy into Next Steps)</th></tr></thead>
+<tbody>
+<!-- one row per open use case -->
+<tr><td class='uc'>{UC_NAME}</td><td class='num'>{STAGE}</td><td>{STATUS_PILL}</td><td class='num'>{UC_EACV}</td><td><div class='sf'>{MM.DD.YYYY} {SE_INITIALS}- {GROUNDED_UPDATE}</div></td></tr>
+</tbody></table></div></div></section>
+<!-- END per-account Part 1 block -->
+
+<h2 class="part" id="new">Part 2 — Recommended new use cases</h2>
+<p class="part-sub">Ordered by priority within each account. "Flagged in a prior cycle" means it appeared in an earlier brief and is still untracked.</p>
+<nav class="toc"><!-- one link per account, largest gap eACV first --><a href='#new-{ACCT_SLUG}'>{ACCOUNT_NAME}</a></nav>
+
+<!-- BEGIN per-account Part 2 block -->
+<section class="acct" id="new-{ACCT_SLUG}">
+<h3>{ACCOUNT_NAME}<span>{ACCT_GAP_COUNT} recommended · {ACCT_GAP_EACV_RANGE}</span></h3>
+<div class="acct-body">
+<!-- one card per gap, Very High first -->
+<div class="card">{PRIORITY_BADGE}{CYCLE_TAG}
+<h4>{SUGGESTED_UC_NAME}</h4>
+<div class="label">Salesforce UC description</div><div class="sf">{UC_DESCRIPTION_2_TO_3_SENTENCES}</div>
+<div class="grid"><div><b>Workload</b>{WORKLOAD}</div><div><b>Likely owner</b>{LIKELY_OWNER}</div>
+<div><b>Suggested stage</b>{SUGGESTED_STAGE}</div><div><b>Est. eACV</b>{EACV_RANGE}</div><div><b>Lead feature</b>{PRIORITIZED_FEATURE}</div></div>
+<div class="label">Evidence (Snowflake telemetry, last 30 days)</div><p class="evidence">{EVIDENCE_OBJECT_NAMES_AND_DATES}</p></div>
+</div></section>
+<!-- END per-account Part 2 block -->
+
+<footer>Prepared by {SE_NAME} · Source: Salesforce (SDA_USE_CASE) and Snowflake telemetry (Snowhouse) · {DATE_LONG}<br>Not scanned: {NOT_SCANNED_ACCOUNTS_WITH_REASON}<br>Skipped / errors: {SKIPPED_OR_NONE}</footer>
+</div></body></html>
