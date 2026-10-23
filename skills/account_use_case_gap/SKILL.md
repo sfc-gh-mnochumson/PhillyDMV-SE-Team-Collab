@@ -47,7 +47,7 @@ Use `ask_user_question` (type: "text") to collect only the **customer/account na
 
 List the subfolders of `accounts_dir` that contain an `ACCOUNT.md` using a file search (glob `*/ACCOUNT.md`), not a shell command; skip any folder without one. From the header block of each `ACCOUNT.md` read:
 
-- **Display name** — the first `# ` heading
+- **Display name** — the first `# ` heading, used verbatim everywhere it appears (header account list, tables of contents, section headers, footer)
 - **Salesforce ID(s)** — the 18-character IDs on the `Salesforce ID` / `Salesforce IDs` line that identify this customer (an account may list more than one, e.g. two related companies). Ignore any ID the line marks as excluded, unrelated, wrong, or not this customer — e.g. in `0013100001AAAAAAAA (unrelated account named "Acme" — 001AB00000BBBBBBBB — is excluded)`, use only the first ID.
 - **AE** — the `AE:` line with any trailing parenthetical note removed (`Jane Doe (both)` → `Jane Doe`); this is the grouping key for Step 6U. If there is no AE line, group the account under `Unassigned`.
 - **Deployments** — the `Deployments` line, used only as a cross-check in Step 2U
@@ -509,21 +509,23 @@ Produce a single self-contained HTML file following Snowflake brand guidelines.
 
 ## Step 6U: Generate Per-AE Roll-ups (unattended)
 
-Write one self-contained HTML file per AE, built from **`report_template.html`** in this skill's folder. Read the template, keep its `<style>` block unchanged, follow its block structure and class vocabulary, and replace every `{{PLACEHOLDER}}`. Do not invent a different layout.
+Write one self-contained HTML file per AE, built from **`report_template.html`** in this skill's folder. Read the template, keep its `<style>` block unchanged, follow its block structure and class vocabulary, and replace every `{PLACEHOLDER}` (single braces). Do not invent a different layout.
 
 **File path**: `{output_dir}/use_case_gap_{ae_slug}_{YYYYMMDD}.html` — `ae_slug` is the AE name lowercased, with each run of non-alphanumeric characters replaced by `_` and leading/trailing `_` trimmed (e.g. `jane_doe`). A rerun on the same day overwrites that day's file; never modify files with other names or dates.
 
 Totals: report gap eACV as a range; sum the low ends and the high ends separately.
 
-**Prior cycle:** find the most recent earlier `use_case_gap_{ae_slug}_*.html` in `output_dir`. Its date is `{{PREVIOUS_RUN_DATE}}` (if there is none, write "Since the last 30 days" in the headline). A gap whose suggested UC name or core objects also appear in that file gets the *Flagged in a prior cycle* tag; others get *New this cycle*.
+**Prior cycle:** find the most recent earlier `use_case_gap_{ae_slug}_*.html` in `output_dir`. Its date is `{PREVIOUS_RUN_DATE}` (if there is none, write "Since the last 30 days" in the headline). A gap whose suggested UC name or core objects also appear in that file gets the *Flagged in a prior cycle* tag; others get *New this cycle*.
 
-**Part 1 — Current use cases** (one section per account, alphabetical):
+**Account order:** both parts list accounts in the same order — largest gap eACV high end first (ties: larger open eACV first, then display name). Each account section is a collapsible `<details class="acct" open>` with the account header in `<summary>`, per the template.
+
+**Part 1 — Current use cases** (one section per account, in the account order above):
 - Include only open use cases (`In Pursuit`, `Implementation`, `Production` below Stage 7); count Stage 7 / Deployed ones in "deployed hidden" and leave them out of the table.
 - Headline: 2–4 sentences on what changed in the account since the prior cycle, from Step 4 telemetry (new or updated AI objects, new clusters, environment moves such as DEV → QA).
-- Risk paragraph only when there is a concrete risk (stage overrun, passed go-live date, a gap that competes with an open UC); otherwise omit it.
+- Risk paragraph is always present. Name the most concrete risk you can ground in data (stage overrun, passed go-live date, a gap that competes with an open UC, no telemetry behind a large UC, competitor pressure from ACCOUNT.md). If none applies, write "No concrete risk identified this cycle." — never omit the paragraph.
 - Salesforce update cell: `MM.DD.YYYY <SE initials>- ` followed by 1–3 sentences tying that use case to telemetry evidence from Step 4 (object names and dates). If Step 4 shows nothing for the use case, say so plainly ("No related objects changed in the last 30 days") rather than inventing progress.
 
-**Part 2 — Recommended new use cases** (one section per account, largest gap eACV high end first; cards Very High → High → Medium): one card per Step 5 gap with the Gap Card Fields from Step 6, using the template's card markup.
+**Part 2 — Recommended new use cases** (one section per account, in the same account order as Part 1; cards Very High → High → Medium): one card per Step 5 gap with the Gap Card Fields from Step 6, using the template's card markup.
 
 **Footer:** sources and date, accounts not scanned (with reason from Step 2U), and Skipped / errors (or "None").
 

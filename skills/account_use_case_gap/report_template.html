@@ -24,9 +24,12 @@ h2.part { margin: 34px 0 6px; font-size: 20px; color: light-dark(#0f172a, #f1f5f
 p.part-sub { margin: 0 0 14px; color: light-dark(#64748b, #94a3b8); font-size: 13px; }
 nav.toc { font-size: 13px; margin: 8px 0 0; }
 nav.toc a { color: light-dark(#0369a1, #7dd3fc); margin-right: 14px; white-space: nowrap; }
-section.acct { background: light-dark(#fff, #1e293b); border: 1px solid light-dark(#e2e8f0, #334155); border-radius: 8px; margin: 16px 0; overflow: hidden; }
-section.acct > h3 { margin: 0; padding: 12px 16px; background: light-dark(#2d3f55, #334155); color: #fff; font-size: 15px; display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px; }
-section.acct > h3 span { font-weight: 400; font-size: 12px; color: #cbd5e1; }
+details.acct { background: light-dark(#fff, #1e293b); border: 1px solid light-dark(#e2e8f0, #334155); border-radius: 8px; margin: 16px 0; overflow: hidden; }
+details.acct > summary { margin: 0; padding: 12px 16px; background: light-dark(#2d3f55, #334155); color: #fff; font-size: 15px; font-weight: 700; display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px; cursor: pointer; list-style: none; }
+details.acct > summary::-webkit-details-marker { display: none; }
+details.acct > summary::before { content: '\25B8'; color: #29b5e8; margin-right: 4px; }
+details.acct[open] > summary::before { content: '\25BE'; }
+details.acct > summary span { font-weight: 400; font-size: 12px; color: #cbd5e1; margin-left: auto; }
 .acct-body { padding: 14px 16px; }
 .headline { font-size: 13px; margin: 0 0 12px; color: light-dark(#334155, #cbd5e1); }
 .risk { background: light-dark(#fef2f2, #450a0a); border-left: 3px solid #dc2626; padding: 8px 12px; font-size: 13px; margin: 0 0 12px; border-radius: 4px; }
@@ -78,21 +81,21 @@ footer { text-align: center; font-size: 11px; color: light-dark(#64748b, #94a3b8
 <div class="stat"><div class="v">{VERY_HIGH_COUNT}</div><div class="l">Very High priority</div></div>
 <div class="stat"><div class="v">{GAP_EACV_RANGE}</div><div class="l">Est. new eACV</div></div>
 </div>
-<div class="note">{AE_FIRST_NAME} — Part 1 lists every open (not yet Deployed) use case in Salesforce for your accounts, with a ready-to-paste update for the Next Steps field. Part 2 lists workloads we can see being built in Snowflake that have no use case yet, with a Salesforce-ready description and the evidence behind each one. eACV figures for new use cases are estimates.</div>
+<div class="note">{AE_FIRST_NAME} — Part 1 lists every open (not yet Deployed) use case in Salesforce for your accounts, with a ready-to-paste update for the Next Steps field. Part 2 lists workloads we can see being built in Snowflake that have no use case yet, with a Salesforce-ready description and the evidence behind each one. eACV figures for new use cases are estimates. Accounts are ordered by estimated new eACV in both parts; click an account header to collapse it.</div>
 
 <h2 class="part" id="current">Part 1 — Current use cases</h2>
 <p class="part-sub">Open use cases as of {DATE_LONG} from Salesforce; {DEPLOYED_COUNT} already-Deployed (Stage 7) use cases are left out. Update text is based on Snowflake telemetry from the last 30 days.</p>
-<nav class="toc"><!-- one link per account --><a href='#cur-{ACCT_SLUG}'>{ACCOUNT_NAME}</a></nav>
+<nav class="toc"><!-- one link per account, same order as Part 2 --><a href='#cur-{ACCT_SLUG}'>{ACCOUNT_NAME}</a></nav>
 
 <!-- BEGIN per-account Part 1 block -->
-<section class="acct" id="cur-{ACCT_SLUG}">
-<h3>{ACCOUNT_NAME}<span>{OPEN_COUNT} open · {ACCT_OPEN_EACV} eACV · {DEPLOYED_HIDDEN} deployed hidden</span></h3>
-<div class="acct-body"><p class="headline"><b>Since {PREVIOUS_RUN_DATE}:</b> {WHAT_CHANGED_2_TO_4_SENTENCES}</p><p class='risk'><b>Risk:</b> {RISK_OR_OMIT_PARAGRAPH}</p>
+<details class="acct" open id="cur-{ACCT_SLUG}">
+<summary>{ACCOUNT_NAME}<span>{OPEN_COUNT} open · {ACCT_OPEN_EACV} eACV · {DEPLOYED_HIDDEN} deployed hidden</span></summary>
+<div class="acct-body"><p class="headline"><b>Since {PREVIOUS_RUN_DATE}:</b> {WHAT_CHANGED_2_TO_4_SENTENCES}</p><p class='risk'><b>Risk:</b> {RISK_ALWAYS_PRESENT}</p>
 <div class="table-wrap"><table><thead><tr><th>Use case</th><th>Stage</th><th>Status</th><th>eACV</th><th>Salesforce update (copy into Next Steps)</th></tr></thead>
 <tbody>
 <!-- one row per open use case -->
 <tr><td class='uc'>{UC_NAME}</td><td class='num'>{STAGE}</td><td>{STATUS_PILL}</td><td class='num'>{UC_EACV}</td><td><div class='sf'>{MM.DD.YYYY} {SE_INITIALS}- {GROUNDED_UPDATE}</div></td></tr>
-</tbody></table></div></div></section>
+</tbody></table></div></div></details>
 <!-- END per-account Part 1 block -->
 
 <h2 class="part" id="new">Part 2 — Recommended new use cases</h2>
@@ -100,8 +103,8 @@ footer { text-align: center; font-size: 11px; color: light-dark(#64748b, #94a3b8
 <nav class="toc"><!-- one link per account, largest gap eACV first --><a href='#new-{ACCT_SLUG}'>{ACCOUNT_NAME}</a></nav>
 
 <!-- BEGIN per-account Part 2 block -->
-<section class="acct" id="new-{ACCT_SLUG}">
-<h3>{ACCOUNT_NAME}<span>{ACCT_GAP_COUNT} recommended · {ACCT_GAP_EACV_RANGE}</span></h3>
+<details class="acct" open id="new-{ACCT_SLUG}">
+<summary>{ACCOUNT_NAME}<span>{ACCT_GAP_COUNT} recommended · {ACCT_GAP_EACV_RANGE}</span></summary>
 <div class="acct-body">
 <!-- one card per gap, Very High first -->
 <div class="card">{PRIORITY_BADGE}{CYCLE_TAG}
@@ -110,7 +113,7 @@ footer { text-align: center; font-size: 11px; color: light-dark(#64748b, #94a3b8
 <div class="grid"><div><b>Workload</b>{WORKLOAD}</div><div><b>Likely owner</b>{LIKELY_OWNER}</div>
 <div><b>Suggested stage</b>{SUGGESTED_STAGE}</div><div><b>Est. eACV</b>{EACV_RANGE}</div><div><b>Lead feature</b>{PRIORITIZED_FEATURE}</div></div>
 <div class="label">Evidence (Snowflake telemetry, last 30 days)</div><p class="evidence">{EVIDENCE_OBJECT_NAMES_AND_DATES}</p></div>
-</div></section>
+</div></details>
 <!-- END per-account Part 2 block -->
 
 <footer>Prepared by {SE_NAME} · Source: Salesforce (SDA_USE_CASE) and Snowflake telemetry (Snowhouse) · {DATE_LONG}<br>Not scanned: {NOT_SCANNED_ACCOUNTS_WITH_REASON}<br>Skipped / errors: {SKIPPED_OR_NONE}</footer>
