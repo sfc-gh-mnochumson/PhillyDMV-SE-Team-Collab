@@ -30,6 +30,13 @@ Unattended parameters (all supplied by the invoking prompt — never hard-code t
 
 **Avoid the shell in unattended mode.** Shell commands are what usually trigger approval prompts, which stall an unattended run. Use only SQL (read-only `SELECT`), file read/list/search tools, and the file-write tool, which creates any missing folders. Write the HTML directly with the file-write tool rather than generating it with a script.
 
+**Query budget in unattended mode.** Every account must finish in minutes, not hours:
+
+- Run each query with a 300-second timeout. If one times out, do not retry a wider version — record `"<step> timed out"` in the account's errors and continue.
+- Keep the `ds = CURRENT_DATE()` filters on `ALL_LIVE_SCHEMAS` / `ALL_LIVE_DATABASES` — each `ds` is a full daily snapshot, so a `ds` range scans weeks of copies. If today's snapshot returns nothing, use the single most recent one: `ds = (SELECT MAX(ds) FROM … WHERE account_id = {account_id} AND deployment = '{deployment}' AND ds >= DATEADD(day, -7, CURRENT_DATE()))`.
+- Do not aggregate unbounded name lists (`LISTAGG`, `ARRAY_AGG` over all new objects); use the 4b detail query with its `LIMIT`.
+- Run the skill's queries. Add at most 3 diagnostic queries per account, under the same rules.
+
 ---
 
 ## Step 1: Gather Account Name (interactive)
@@ -38,7 +45,7 @@ Use `ask_user_question` (type: "text") to collect only the **customer/account na
 
 ## Step 1U: Load Accounts (unattended)
 
-List the subfolders of `accounts_dir` that contain an `ACCOUNT.md`; skip any folder without one. From the header block of each `ACCOUNT.md` read:
+List the subfolders of `accounts_dir` that contain an `ACCOUNT.md` using a file search (glob `*/ACCOUNT.md`), not a shell command; skip any folder without one. From the header block of each `ACCOUNT.md` read:
 
 - **Display name** — the first `# ` heading
 - **Salesforce ID(s)** — the 18-character IDs on the `Salesforce ID` / `Salesforce IDs` line that identify this customer (an account may list more than one, e.g. two related companies). Ignore any ID the line marks as excluded, unrelated, wrong, or not this customer — e.g. in `0013100001AAAAAAAA (unrelated account named "Acme" — 001AB00000BBBBBBBB — is excluded)`, use only the first ID.
@@ -47,7 +54,7 @@ List the subfolders of `accounts_dir` that contain an `ACCOUNT.md`; skip any fol
 
 If a file has no Salesforce ID, add the account to *Skipped / errors* ("no Salesforce ID in ACCOUNT.md") and move on. Do not fall back to name search in unattended mode — name matches pull in look-alike Salesforce records that an `ACCOUNT.md` may deliberately exclude.
 
-Then run Steps 2U–5 for each account. For large books, process accounts in parallel subagents when available; each returns a compact per-account record (resolved account, AI inventory counts, clusters, gap cards, covered UCs, next steps) so the parent only holds records, not raw query output. Keep any intermediate files in a temp directory, not in `output_dir`.
+Then run Steps 2U–5 for each account. For large books, process accounts in parallel subagents when available. Each subagent returns its compact per-account record (resolved accounts, AI inventory counts, clusters, gap cards, covered UCs, next steps, errors) **in its final reply** — it writes no files — so the parent holds only records, not raw query output, and the only file writes in the run are the Step 6U roll-ups. The parent waits for every subagent to finish; it does not cancel a subagent for being slow. A subagent that fails is listed under *Skipped / errors* with its error.
 
 ---
 
