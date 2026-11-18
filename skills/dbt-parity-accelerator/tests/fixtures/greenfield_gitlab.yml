@@ -1,0 +1,25 @@
+# Fixture: greenfield on GitLab. Everything is created; OIDC with a custom MR sub claim.
+version: 1
+account: ACME-ANALYTICS
+git:
+  provider: gitlab
+  repo: acme/data/analytics
+  ci_auth: oidc
+  ci_subject: "acme-dbt-ci"          # custom sub claim configured on the GitLab project
+  cli_version: "3.28.0"
+dbt:
+  project_dir: transform
+  profile_name: acme
+  object_name: ACME_DBT
+  object_schema: MARTS
+warehouse: {name: TRANSFORM_WH, adopt: false, size: SMALL}
+admin_roles: {objects: SYSADMIN, security: SECURITYADMIN}
+environments:
+  - {name: dev, branch: develop, target: dev, env_yml_env: dev, per_user_schema: true, hosts_ci: true,
+     database: {name: ACME_DEV}, role: {name: ACME_DEV_TRANSFORMER}}
+  - {name: prod, branch: main, target: prod, env_yml_env: prod,
+     database: {name: ACME_PROD}, role: {name: ACME_PROD_TRANSFORMER}, read_role: {name: ACME_PROD_READER}}
+ci: {enabled: true, role: ACME_CI_TRANSFORMER, schema: CI, env_yml_env: ci, pr_schema_prefix: MR_}
+service_user_prefix: SVC_GITLAB_DBT_
+sources:
+  - {database: RAW, schemas: [SALESFORCE, STRIPE]}

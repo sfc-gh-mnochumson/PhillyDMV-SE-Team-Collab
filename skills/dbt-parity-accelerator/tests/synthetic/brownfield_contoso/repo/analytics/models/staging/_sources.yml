@@ -1,0 +1,12 @@
+version: 2
+sources:
+  - name: erp
+    database: "{{ env_var('ERP_DATABASE', 'RAW_ERP') }}"
+    schema: SAP
+    tables:
+      - name: vbak
+  - name: weather
+    database: WEATHER_SHARE
+    schema: PUBLIC
+    tables:
+      - name: daily

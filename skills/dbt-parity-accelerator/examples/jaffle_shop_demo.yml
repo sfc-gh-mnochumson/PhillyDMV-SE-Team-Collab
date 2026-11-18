@@ -1,0 +1,88 @@
+# deployment.yml: the single source of truth for a dbt Projects on Snowflake CI/CD setup.
+# The accelerator skill fills this in during the interview; render.py generates every file
+# and SQL batch from it. Re-running with the same manifest produces the same output.
+#
+# This example reproduces the jaffle_shop demo in this repo (tests/test_golden.py checks it).
+# Field reference: ../MANIFEST.md
+
+version: 1
+account: SFSENORTHAMERICA-JDAMARO_AWS1        # ORG-ACCOUNT identifier used by the CLI
+
+git:
+  provider: github                               # github | gitlab | azure
+  repo: sfc-gh-jdamaro/dbt_Projects_on_Snowflake # owner/repo (GitLab: group/project path)
+  ci_auth: oidc                                  # oidc (github, gitlab) | keypair (required for azure)
+  # Exact OIDC sub-claim prefix. GitHub repos with immutable IDs use owner@id/repo@id.
+  oidc_subject_repo: sfc-gh-jdamaro@289057973/dbt_Projects_on_Snowflake@1453172595
+  cli_version: "3.28.0"
+
+dbt:
+  project_dir: jaffle_shop
+  profile_name: jaffle_shop        # must equal `profile:` in dbt_project.yml
+  object_name: JAFFLE_SHOP         # dbt project object name; reuse the existing one if found
+  object_schema: ANALYTICS         # schema that hosts the object and shared builds
+  runtime: detected                # recorded from discovery; the accelerator never changes it
+  threads: 8
+  # Extra DBT_* variables found by the env_var() scan, keyed by environment (or default).
+  extra_env_vars: {}
+
+warehouse:
+  name: DBT_WH
+  adopt: true                      # true = exists already; only grants are added
+  size: XSMALL
+
+admin_roles:
+  objects: SYSADMIN                # creates databases, schemas, warehouses
+  security: SECURITYADMIN          # creates roles and users, issues grants
+
+# Ordered lowest -> highest. Promotion is PR-based along this list (dev -> qa -> prod).
+environments:
+  - name: dev
+    branch: dev
+    target: dev                    # profile target (--target)
+    env_yml_env: dev               # env.yml environment (--env); paired with target by design
+    per_user_schema: true          # interactive dev runs build into DBT_<user>
+    hosts_ci: true                 # PRs from feature branches build in this database
+    database: {name: DBT_DEV, adopt: true, owner_role: SYSADMIN}
+    role: {name: DBT_DEV_ROLE, adopt: true}
+  - name: qa
+    branch: qa
+    target: qa
+    env_yml_env: qa
+    hosts_ci: true                 # PRs from the qa branch (qa -> main) build here
+    database: {name: DBT_QA, adopt: true, owner_role: ACCOUNTADMIN}
+    role: {name: DBT_QA_ROLE, adopt: true}
+  - name: prod
+    branch: main
+    target: prod
+    env_yml_env: prod
+    database: {name: DBT_PROD, adopt: true, owner_role: SYSADMIN}
+    role: {name: DBT_PROD_ROLE, adopt: true}
+    read_role: {name: DBT_PROD_READ_ROLE, adopt: true}   # humans read prod; only CD writes
+
+ci:
+  enabled: true
+  role: DBT_CI_ROLE
+  schema: CI                       # hosts per-PR dbt project objects
+  env_yml_env: ci
+  pr_schema_prefix: CI_PR_
+  default_ci_env: dev              # CI database for PR heads that are not an environment branch
+  cleanup: true
+
+service_user_prefix: SVC_GH_DBT_
+
+sources:
+  - database: SNOWFLAKE_SAMPLE_DATA
+    shared: true                   # imported/shared database -> GRANT IMPORTED PRIVILEGES
+    owner_role: ACCOUNTADMIN
+
+packages:
+  needs_eai: false                 # true when packages.yml pulls from hub.getdbt.com / GitHub
+  eai_name: DBT_PACKAGES_EAI
+  network_rule: DBT_PACKAGES_NETWORK_RULE
+  hosts: [hub.getdbt.com, codeload.github.com]
+
+schedule:
+  enabled: false
+  environment: prod
+  cron: "0 6 * * * UTC"

@@ -1,0 +1,24 @@
+-- Batch 10: databases, schemas, warehouse. Each object is created by its owner role.
+-- Adopted objects are not recreated and their ownership is never transferred.
+[%- if not warehouse.adopt %]
+USE ROLE [[ admin_roles.objects ]];
+CREATE WAREHOUSE IF NOT EXISTS [[ warehouse.name ]]
+    WAREHOUSE_SIZE = [[ warehouse.size ]]
+    AUTO_SUSPEND = 60
+    AUTO_RESUME = TRUE
+    INITIALLY_SUSPENDED = TRUE
+    COMMENT = 'dbt Projects on Snowflake builds';
+[%- endif %]
+[% for e in environments %]
+USE ROLE [[ e.database.owner_role ]];
+[%- if not e.database.adopt %]
+CREATE DATABASE IF NOT EXISTS [[ e.database.name ]]
+    COMMENT = 'dbt [[ e.name ]] environment';
+[%- endif %]
+CREATE SCHEMA IF NOT EXISTS [[ e.database.name ]].[[ dbt.object_schema ]]
+    COMMENT = 'Hosts the [[ dbt.object_name ]] dbt project object and shared [[ e.name ]] models';
+[%- if ci.enabled and e.hosts_ci %]
+CREATE SCHEMA IF NOT EXISTS [[ e.database.name ]].[[ ci.schema ]]
+    COMMENT = 'Hosts per-PR [[ dbt.object_name ]]_CI_PR_<n> dbt project objects';
+[%- endif %]
+[% endfor %]

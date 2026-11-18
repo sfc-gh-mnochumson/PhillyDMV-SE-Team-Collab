@@ -1,0 +1,22 @@
+-- Batch 00: roles. Run as [[ admin_roles.security ]].
+-- Additive only: CREATE ... IF NOT EXISTS. Adopted roles are left untouched.
+USE ROLE [[ admin_roles.security ]];
+[% for e in environments %]
+[%- if not e.role.adopt %]
+CREATE ROLE IF NOT EXISTS [[ e.role.name ]]
+    COMMENT = 'dbt [[ e.name ]] environment: builds into [[ e.database.name ]]';
+[%- endif %]
+GRANT ROLE [[ e.role.name ]] TO ROLE [[ admin_roles.objects ]];
+[%- if e.read_role and not e.read_role.adopt %]
+CREATE ROLE IF NOT EXISTS [[ e.read_role.name ]]
+    COMMENT = 'Read-only access to [[ e.database.name ]].[[ dbt.object_schema ]]';
+[%- endif %]
+[%- if e.read_role %]
+GRANT ROLE [[ e.read_role.name ]] TO ROLE [[ admin_roles.objects ]];
+[%- endif %]
+[% endfor %]
+[%- if ci.enabled %]
+CREATE ROLE IF NOT EXISTS [[ ci.role ]]
+    COMMENT = 'Slim CI: per-PR schemas in CI databases; read-only elsewhere';
+GRANT ROLE [[ ci.role ]] TO ROLE [[ admin_roles.objects ]];
+[%- endif %]

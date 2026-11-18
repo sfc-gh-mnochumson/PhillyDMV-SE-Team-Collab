@@ -1,0 +1,16 @@
+# What the user answered in the interview (greenfield, everything created, GitHub OIDC).
+# Merged over the draft produced by propose.py; environments merge by name.
+git: {provider: github, repo: northwind/analytics, ci_auth: oidc}
+dbt: {object_name: NORTHWIND, object_schema: ANALYTICS}
+warehouse: {name: NW_DBT_WH, adopt: false, size: XSMALL}
+environments:
+  - {name: dev, branch: dev, target: dev, env_yml_env: dev, per_user_schema: true, hosts_ci: true,
+     database: {name: NW_DEV, adopt: false}, role: {name: NW_DBT_DEV_ROLE}}
+  - {name: qa, branch: qa, target: qa, env_yml_env: qa, hosts_ci: true,
+     database: {name: NW_QA, adopt: false}, role: {name: NW_DBT_QA_ROLE}}
+  - {name: prod, branch: main, target: prod, env_yml_env: prod,
+     database: {name: NW_PROD, adopt: false}, role: {name: NW_DBT_PROD_ROLE},
+     read_role: {name: NW_PROD_READER}}
+ci: {enabled: true, role: NW_DBT_CI_ROLE, schema: CI, env_yml_env: ci, pr_schema_prefix: CI_PR_}
+sources:
+  - {database: NW_RAW, schemas: [CRM]}

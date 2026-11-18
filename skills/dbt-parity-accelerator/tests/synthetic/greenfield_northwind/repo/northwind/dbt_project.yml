@@ -1,0 +1,7 @@
+name: northwind
+version: "1.0.0"
+profile: northwind
+model-paths: ["models"]
+models:
+  northwind:
+    +materialized: view

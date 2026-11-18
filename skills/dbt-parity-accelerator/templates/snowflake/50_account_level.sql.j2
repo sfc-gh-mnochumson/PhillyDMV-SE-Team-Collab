@@ -1,0 +1,18 @@
+-- Batch 50: ACCOUNT-LEVEL objects. Separate approval required.
+-- Needed only because packages.yml installs packages from hub.getdbt.com / GitHub during deploy.
+USE ROLE ACCOUNTADMIN;
+[%- set rule = environments[0].database.name ~ '.' ~ dbt.object_schema ~ '.' ~ packages.network_rule %]
+
+-- Network rules are schema objects; this one lives next to the [[ environments[0].name ]] project object.
+CREATE NETWORK RULE IF NOT EXISTS [[ rule ]]
+    MODE = EGRESS
+    TYPE = HOST_PORT
+    VALUE_LIST = ([% for h in packages.hosts %]'[[ h ]]'[% if not loop.last %], [% endif %][% endfor %]);
+
+CREATE EXTERNAL ACCESS INTEGRATION IF NOT EXISTS [[ packages.eai_name ]]
+    ALLOWED_NETWORK_RULES = ([[ rule ]])
+    ENABLED = TRUE
+    COMMENT = 'dbt deps for [[ dbt.object_name ]]';
+[% for r in all_build_roles %]
+GRANT USAGE ON INTEGRATION [[ packages.eai_name ]] TO ROLE [[ r ]];
+[%- endfor %]

@@ -1,0 +1,17 @@
+{
+  "_comment": "Synthetic greenfield customer: a fresh account with nothing for dbt yet.",
+  "account": "NORTHWIND-ANALYTICS",
+  "dbt_projects": [],
+  "databases": [
+    {"name": "SNOWFLAKE", "owner": "", "kind": "APPLICATION"},
+    {"name": "NW_RAW", "owner": "SYSADMIN", "kind": "STANDARD"}
+  ],
+  "roles": [
+    {"name": "ACCOUNTADMIN"}, {"name": "SYSADMIN"}, {"name": "SECURITYADMIN"},
+    {"name": "USERADMIN"}, {"name": "PUBLIC"}
+  ],
+  "users": [{"name": "JSMITH", "type": "PERSON"}],
+  "warehouses": [{"name": "COMPUTE_WH", "size": "X-Small", "owner": "SYSADMIN"}],
+  "integrations": [],
+  "manage_grants_roles": ["SECURITYADMIN"]
+}

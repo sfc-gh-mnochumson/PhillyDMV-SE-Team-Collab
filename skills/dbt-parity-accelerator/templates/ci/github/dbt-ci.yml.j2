@@ -1,0 +1,144 @@
+name: dbt CI (Slim CI)
+
+# PR check: deploys the PR's code as an isolated dbt project object and builds it into
+# a per-PR schema ([[ ci.pr_schema_prefix ]]<n>), deferring unchanged models to the TARGET branch's object.
+#
+#   PR head -> base       build in                                     state/defer from
+[%- for b in ci_routes %]
+#   [[ b.head_label ]] -> [[ b.base ]]   [[ b.build_db ]].[[ ci.pr_schema_prefix ]]<n>   [[ b.state_obj ]]
+[%- endfor %]
+#
+# Until the target object has a successful run in the last 14 days this falls back to a
+# full build; it switches to state:modified+ automatically once state exists.
+#
+# Branch protection: require the slim-ci check to pass before a PR is merged.
+# Private repos need GitHub Pro/Team/Enterprise. A repo admin on an eligible plan can run:
+#
+#   for b in[% for e in environments %] [[ e.branch ]][% endfor %]; do
+#     gh api -X PUT repos/[[ git.repo ]]/branches/$b/protection --input - <<'EOF'
+#   {"required_status_checks":{"strict":false,"contexts":["slim-ci"]},
+#    "enforce_admins":false,"required_pull_request_reviews":null,"restrictions":null}
+#   EOF
+#   done
+#
+# This blocks merging only; GitHub cannot block closing a PR. dbt-ci-cleanup.yml handles
+# a PR closed while CI is still running.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches: [[ '[' ]][% for e in environments %][[ e.branch ]][% if not loop.last %], [% endif %][% endfor %][[ ']' ]]
+    paths: ['[[ dbt.project_dir ]]/**']
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: dbt-ci-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+env:
+  SNOWFLAKE_ACCOUNT: [[ account ]]
+  PROJECT_DIR: [[ dbt.project_dir ]]
+
+jobs:
+  slim-ci:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Resolve CI database, target, and state object
+        id: ctx
+        env:
+          HEAD_REF: ${{ github.head_ref }}
+          BASE_REF: ${{ github.base_ref }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          case "$HEAD_REF" in
+[%- for e in ci_envs if e.name != default_ci_env.name %]
+            [[ e.branch ]]) ci_db=[[ e.database.name ]]; ci_target=[[ e.ci_target ]] ;;
+[%- endfor %]
+            *) ci_db=[[ default_ci_env.database.name ]]; ci_target=[[ default_ci_env.ci_target ]] ;;
+          esac
+          case "$BASE_REF" in
+[%- for e in environments %]
+            [[ e.branch ]]) state_obj=[[ e.database.name ]].[[ dbt.object_schema ]].[[ dbt.object_name ]] ;;
+[%- endfor %]
+            *)    echo "Unsupported base branch: $BASE_REF"; exit 1 ;;
+          esac
+          {
+            echo "ci_db=$ci_db"
+            echo "ci_target=$ci_target"
+            echo "ci_schema=[[ ci.pr_schema_prefix ]]${PR_NUMBER}"
+            echo "ci_obj=${ci_db}.[[ ci.schema ]].[[ dbt.object_name ]]_CI_PR_${PR_NUMBER}"
+            echo "state_obj=$state_obj"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Set up Snowflake CLI
+        uses: snowflakedb/snowflake-actions@v3
+        with:
+          use-oidc: true
+          cli-version: "[[ cli_version ]]"
+
+      - name: Test connection
+        run: snow connection test -x
+
+      - name: Deploy PR dbt project object
+        run: |
+          snow dbt deploy [[ dbt.object_name ]]_CI_PR_${{ github.event.pull_request.number }} \
+            --source "$PROJECT_DIR" \
+            --database ${{ steps.ctx.outputs.ci_db }} \
+            --schema [[ ci.schema ]] \
+            --default-target ${{ steps.ctx.outputs.ci_target }} \
+            --default-env [[ ci.env_yml_env ]] \
+[%- if packages.needs_eai %]
+            --external-access-integration [[ packages.eai_name ]] \
+[%- endif %]
+            --no-auto-compile \
+            -x
+
+      - name: Check for deferral state
+        id: state
+        run: |
+          set +e
+          out=$(snow sql -x --format json -q \
+            "SELECT SYSTEM\$DBT_GET_LAST_SUCCESSFUL_RUN_TARGET('${{ steps.ctx.outputs.state_obj }}') AS STATE_PATH" 2>&1)
+          rc=$?
+          set -e
+          path=$(echo "$out" | python3 -c 'import sys, json
+          try:
+              print(json.load(sys.stdin)[0]["STATE_PATH"] or "")
+          except Exception:
+              print("")')
+          if [ $rc -eq 0 ] && [ -n "$path" ]; then
+            echo "has_state=true" >> "$GITHUB_OUTPUT"
+            echo "Slim CI: deferring to ${{ steps.ctx.outputs.state_obj }}"
+          else
+            echo "has_state=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::No successful run of ${{ steps.ctx.outputs.state_obj }} in the last 14 days; running a full build."
+          fi
+
+      - name: Build (Slim CI, deferred)
+        if: steps.state.outputs.has_state == 'true'
+        run: |
+          snow dbt execute \
+            -x \
+            --env [[ ci.env_yml_env ]] \
+            --env-vars '{"DBT_SCHEMA": "${{ steps.ctx.outputs.ci_schema }}"}' \
+            --import "SYSTEM\$DBT_GET_LAST_SUCCESSFUL_RUN_TARGET('${{ steps.ctx.outputs.state_obj }}') AS 'state'" \
+            ${{ steps.ctx.outputs.ci_obj }} \
+            build --target ${{ steps.ctx.outputs.ci_target }} --state ./imports/state --defer --select state:modified+
+
+      - name: Build (full, no state yet)
+        if: steps.state.outputs.has_state != 'true'
+        run: |
+          snow dbt execute \
+            -x \
+            --env [[ ci.env_yml_env ]] \
+            --env-vars '{"DBT_SCHEMA": "${{ steps.ctx.outputs.ci_schema }}"}' \
+            ${{ steps.ctx.outputs.ci_obj }} \
+            build --target ${{ steps.ctx.outputs.ci_target }}

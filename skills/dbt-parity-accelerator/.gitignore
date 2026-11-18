@@ -1,0 +1,4 @@
+__pycache__/
+*.pyc
+.tmp_manifest.yml
+.manifest.tmp.yml

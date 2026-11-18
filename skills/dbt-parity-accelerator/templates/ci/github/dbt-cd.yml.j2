@@ -1,0 +1,86 @@
+name: dbt CD
+
+# On merge (push) to [% for e in environments %][[ e.branch ]][% if not loop.last %] / [% endif %][% endfor %]: redeploy that branch's dbt project object and build
+# into that branch's database. Each branch authenticates as its own OIDC service user,
+# so only [[ environments[-1].branch ]] can write [[ environments[-1].database.name ]].
+#
+# Never deploy with --force: it wipes run history, which Slim CI uses as state.
+
+on:
+  push:
+    branches: [[ '[' ]][% for e in environments %][[ e.branch ]][% if not loop.last %], [% endif %][% endfor %][[ ']' ]]
+    paths: ['[[ dbt.project_dir ]]/**']
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: dbt-cd-${{ github.ref_name }}
+  cancel-in-progress: false
+
+env:
+  SNOWFLAKE_ACCOUNT: [[ account ]]
+  PROJECT_DIR: [[ dbt.project_dir ]]
+
+jobs:
+  deploy-and-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Resolve environment
+        id: ctx
+        env:
+          BRANCH: ${{ github.ref_name }}
+        run: |
+          case "$BRANCH" in
+[%- for e in environments %]
+            [[ e.branch ]]) db=[[ e.database.name ]]; target=[[ e.target ]]; env=[[ e.env_yml_env ]] ;;
+[%- endfor %]
+            *)    echo "Unsupported branch: $BRANCH"; exit 1 ;;
+          esac
+          echo "db=$db" >> "$GITHUB_OUTPUT"
+          echo "target=$target" >> "$GITHUB_OUTPUT"
+          echo "env=$env" >> "$GITHUB_OUTPUT"
+          echo "obj=$db.[[ dbt.object_schema ]].[[ dbt.object_name ]]" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Snowflake CLI
+        uses: snowflakedb/snowflake-actions@v3
+        with:
+          use-oidc: true
+          cli-version: "[[ cli_version ]]"
+
+      - name: Test connection
+        run: snow connection test -x
+
+      - name: Deploy dbt project object
+        run: |
+          snow dbt deploy [[ dbt.object_name ]] \
+            --source "$PROJECT_DIR" \
+            --database ${{ steps.ctx.outputs.db }} \
+            --schema [[ dbt.object_schema ]] \
+            --default-target ${{ steps.ctx.outputs.target }} \
+            --default-env ${{ steps.ctx.outputs.env }} \
+[%- if packages.needs_eai %]
+            --external-access-integration [[ packages.eai_name ]] \
+[%- endif %]
+            -x
+[%- if ci.enabled %]
+
+      - name: Let Slim CI read this object's run state
+        run: snow sql -x -q "GRANT MONITOR ON DBT PROJECT ${{ steps.ctx.outputs.obj }} TO ROLE [[ ci.role ]]"
+[%- endif %]
+
+      - name: Build
+        # Shared builds always land in [[ dbt.object_schema ]] (dev's env.yml schema may be per-user).
+        run: |
+          snow dbt execute \
+            -x \
+            --env ${{ steps.ctx.outputs.env }} \
+            --env-vars '{"DBT_SCHEMA": "[[ dbt.object_schema ]]"}' \
+            ${{ steps.ctx.outputs.obj }} \
+            build --target ${{ steps.ctx.outputs.target }}

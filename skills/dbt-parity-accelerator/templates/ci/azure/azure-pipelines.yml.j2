@@ -1,0 +1,56 @@
+# dbt Projects on Snowflake CI/CD for Azure DevOps (rendered by the accelerator).
+# STATUS: PILOT. Not yet run end to end; validate on a test project before relying on it.
+# Auth: KEY PAIR. Azure DevOps OIDC to Snowflake workload identity was not confirmed in the
+# Snowflake docs at authoring time, so each service user gets an RSA public key and the
+# private keys live in the variable group "[[ dbt.object_name | lower ]]-snowflake" as secrets:
+#   SNOWFLAKE_PRIVATE_KEY_<ENV>  (one per environment) and SNOWFLAKE_PRIVATE_KEY_CI.
+# Slim CI: add this pipeline as a Build Validation policy on each target branch.
+
+trigger:
+  branches:
+    include: [[ '[' ]][% for e in environments %][[ e.branch ]][% if not loop.last %], [% endif %][% endfor %][[ ']' ]]
+  paths:
+    include: ['[[ dbt.project_dir ]]/*']
+
+pr:
+  branches:
+    include: [[ '[' ]][% for e in environments %][[ e.branch ]][% if not loop.last %], [% endif %][% endfor %][[ ']' ]]
+  paths:
+    include: ['[[ dbt.project_dir ]]/*']
+
+pool:
+  vmImage: ubuntu-latest
+
+variables:
+  - group: [[ dbt.object_name | lower ]]-snowflake
+  - name: SNOWFLAKE_ACCOUNT
+    value: [[ account ]]
+  - name: SNOWFLAKE_AUTHENTICATOR
+    value: SNOWFLAKE_JWT
+  - name: PROJECT_DIR
+    value: [[ dbt.project_dir ]]
+
+steps:
+  - script: pip install --quiet "snowflake-cli==[[ cli_version ]]" && chmod +x ci/dbt_pipeline.sh
+    displayName: Install Snowflake CLI
+
+  - script: |
+      pr=$(System.PullRequest.PullRequestNumber)
+      head=$(echo "$(System.PullRequest.SourceBranch)" | sed 's#refs/heads/##')
+      base=$(echo "$(System.PullRequest.TargetBranch)" | sed 's#refs/heads/##')
+      ci/dbt_pipeline.sh ci "$head" "$base" "$pr"
+    displayName: Slim CI
+    condition: eq(variables['Build.Reason'], 'PullRequest')
+    env:
+      SNOWFLAKE_USER: [[ ci_user.name ]]
+      SNOWFLAKE_PRIVATE_KEY_RAW: $(SNOWFLAKE_PRIVATE_KEY_CI)
+[% for u in env_users %]
+  - script: ci/dbt_pipeline.sh cd "[[ u.branch ]]"
+    displayName: CD [[ u.env ]]
+    condition: and(ne(variables['Build.Reason'], 'PullRequest'), eq(variables['Build.SourceBranchName'], '[[ u.branch ]]'))
+    env:
+      SNOWFLAKE_USER: [[ u.name ]]
+      SNOWFLAKE_PRIVATE_KEY_RAW: $(SNOWFLAKE_PRIVATE_KEY_[[ u.env | upper ]])
+[% endfor %]
+# PR cleanup: Azure DevOps has no PR-closed trigger. Run `ci/dbt_pipeline.sh cleanup <head> <pr>`
+# from a scheduled pipeline or a service hook when PRs complete.

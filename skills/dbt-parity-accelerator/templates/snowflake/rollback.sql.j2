@@ -1,0 +1,35 @@
+-- ROLLBACK for objects this accelerator CREATED (adopted objects are never listed).
+-- Never executed by the accelerator. Review and run manually, top to bottom.
+-- Dropping a dbt project object deletes its run history (Slim CI state).
+USE ROLE [[ admin_roles.security ]];
+[%- for u in service_users %]
+DROP USER IF EXISTS [[ u.name ]];
+[%- endfor %]
+[%- if ci.enabled %]
+DROP ROLE IF EXISTS [[ ci.role ]];
+[%- endif %]
+[%- for e in environments %]
+[%- if not e.role.adopt %]
+DROP ROLE IF EXISTS [[ e.role.name ]];
+[%- endif %]
+[%- if e.read_role and not e.read_role.adopt %]
+DROP ROLE IF EXISTS [[ e.read_role.name ]];
+[%- endif %]
+[%- endfor %]
+[%- for e in environments %]
+
+USE ROLE [[ e.database.owner_role ]];
+[%- if not e.database.adopt %]
+DROP DATABASE IF EXISTS [[ e.database.name ]];
+[%- else %]
+[%- if ci.enabled and e.hosts_ci %]
+DROP SCHEMA IF EXISTS [[ e.database.name ]].[[ ci.schema ]];
+[%- endif %]
+-- [[ e.database.name ]] was adopted: drop [[ dbt.object_schema ]] only if this accelerator created it.
+[%- endif %]
+[%- endfor %]
+[%- if not warehouse.adopt %]
+
+USE ROLE [[ admin_roles.objects ]];
+DROP WAREHOUSE IF EXISTS [[ warehouse.name ]];
+[%- endif %]

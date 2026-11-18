@@ -1,0 +1,22 @@
+# Trap: in-project profiles.yml with non-DBT_ env vars (Airflow convention).
+contoso:
+  target: dev
+  outputs:
+    dev:
+      type: snowflake
+      account: "{{ env_var('SNOWFLAKE_ACCOUNT') }}"
+      user: "{{ env_var('SNOWFLAKE_USER') }}"
+      role: EDW_DEV_ENGINEER
+      warehouse: TRANSFORM_WH
+      database: EDW_DEV
+      schema: DBT
+      threads: 4
+    prod:
+      type: snowflake
+      account: "{{ env_var('SNOWFLAKE_ACCOUNT') }}"
+      user: "{{ env_var('SNOWFLAKE_USER') }}"
+      role: EDW_PROD_ENGINEER
+      warehouse: TRANSFORM_WH
+      database: EDW_PROD
+      schema: DBT
+      threads: 8

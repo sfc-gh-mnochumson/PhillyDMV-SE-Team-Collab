@@ -1,0 +1,11 @@
+name: contoso_analytics
+version: "2.3.0"
+profile: contoso
+require-dbt-version: ">=1.10.0"
+model-paths: ["models"]
+vars:
+  start_date: "2020-01-01"
+models:
+  contoso_analytics:
+    staging: {+materialized: view}
+    marts: {+materialized: table}

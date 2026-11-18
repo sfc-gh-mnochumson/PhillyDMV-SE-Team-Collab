@@ -1,0 +1,34 @@
+# Fixture: LIVE brownfield, built from read-only discovery of SFSENORTHAMERICA-JDAMARO_AWS1
+# on 2026-11-18 (SHOW DBT PROJECTS / DATABASES / ROLES / USERS). Not applied.
+# Found: dbt objects ACP_DBT in ACP_DBT_{DEV,STAGE,PROD}.DBT (dbt 1.12.3, targets dev/stage/prod,
+# envs dev/stage/prod), plus ACP_DBT_CI in ACP_DBT_DEV.CI (default env "ci"). All databases owned
+# by SYSADMIN, no ACP-specific roles (-> "extend": create roles), sources in ACP_RAW.
+# The SVC_GH_DBT_* users already belong to the jaffle_shop pipeline -> a different prefix.
+version: 1
+account: SFSENORTHAMERICA-JDAMARO_AWS1
+git:
+  provider: github
+  repo: sfc-gh-jdamaro/acp_dbt          # assumption: repo not available locally
+  ci_auth: oidc
+dbt:
+  project_dir: acp_dbt                  # assumption: repo not available locally
+  profile_name: acp_dbt
+  object_name: ACP_DBT                  # reused from SHOW DBT PROJECTS
+  object_schema: DBT
+  runtime: "1.12.3"                     # recorded, not changed
+warehouse: {name: DBT_WH, adopt: true}
+admin_roles: {objects: SYSADMIN, security: SECURITYADMIN}
+environments:
+  - {name: dev, branch: dev, target: dev, env_yml_env: dev, hosts_ci: true,
+     database: {name: ACP_DBT_DEV, adopt: true}, role: {name: ACP_DBT_DEV_ROLE}}
+  - {name: stage, branch: stage, target: stage, env_yml_env: stage,
+     database: {name: ACP_DBT_STAGE, adopt: true}, role: {name: ACP_DBT_STAGE_ROLE}}
+  - {name: prod, branch: main, target: prod, env_yml_env: prod,
+     database: {name: ACP_DBT_PROD, adopt: true}, role: {name: ACP_DBT_PROD_ROLE},
+     read_role: {name: ACP_DBT_PROD_READ_ROLE}}
+ci: {enabled: true, role: ACP_DBT_CI_ROLE, schema: CI, env_yml_env: ci, pr_schema_prefix: CI_PR_}
+service_user_prefix: SVC_GH_ACP_DBT_
+discovered:
+  service_users: [SVC_GH_DBT_CI, SVC_GH_DBT_DEV, SVC_GH_DBT_PROD, SVC_GH_DBT_QA]
+sources:
+  - {database: ACP_RAW, schemas: [PUBLIC]}   # assumption: schema list needs the repo's sources.yml
