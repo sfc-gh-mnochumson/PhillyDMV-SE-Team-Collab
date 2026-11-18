@@ -1,6 +1,7 @@
 # Interview
 
-Ask in this order. Every question has a default from discovery; state it and the reason.
+Ask in this order. Every question has a default from the discovery summary the customer confirmed
+(SKILL.md Step 1.5), including their corrections and exclusions; state it and the reason.
 Write each answer into `deployment.yml` immediately. Field names refer to `MANIFEST.md`.
 
 ## Block A: Source control and auth  (`git.*`)
@@ -68,20 +69,20 @@ Write each answer into `deployment.yml` immediately. Field names refer to `MANIF
 
 ## Block E: Compute and sources
 
-13. Warehouse: adopt from D5 or create (`warehouse.size`, recommend XSMALL to start; resize after
+14. Warehouse: adopt from D5 or create (`warehouse.size`, recommend XSMALL to start; resize after
     observing build times). One shared warehouse is the default.
-14. Sources: from `source_databases` in the scan. Per database: schemas to read
+15. Sources: from `source_databases` in the scan. Per database: schemas to read
     (`sources[].schemas`), or `shared: true` for shares/Marketplace (needs the owner role).
 
 ## Block F: CI behavior  (`ci.*`, `schedule.*`)
 
-15. Slim CI on PRs (recommend yes). Which environments host PR builds (`hosts_ci`; recommend the
+16. Slim CI on PRs (recommend yes). Which environments host PR builds (`hosts_ci`; recommend the
     lowest env, plus each intermediate env so env-to-env PRs build in their own database).
     PR schema prefix, CI role name, PR cleanup (recommend yes).
-16. Branch protection: requiring the `slim-ci` check needs a paid plan for private GitHub repos.
-17. Optional scheduled run (e.g. nightly prod) in addition to deploy-on-merge -> `schedule.*`;
+17. Branch protection: requiring the `slim-ci` check needs a paid plan for private GitHub repos.
+18. Optional scheduled run (e.g. nightly prod) in addition to deploy-on-merge -> `schedule.*`;
     follow `dbt-projects-on-snowflake` SCHEDULE.
-18. **"Who will run the admin SQL?"** If not the current user, the outcome of Apply is exported
+19. **"Who will run the admin SQL?"** If not the current user, the outcome of Apply is exported
     scripts plus a hand-off note, not execution.
 
 ## Done when

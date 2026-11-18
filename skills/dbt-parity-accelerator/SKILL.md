@@ -82,6 +82,11 @@ Ask for the repo path (local clone) if it isn't the working directory.
 4. Flag immediately: databases owned by ACCOUNTADMIN, `env_var()` keys without the `DBT_` prefix,
    an in-project `profiles.yml`, packages (account-level EAI needed), existing CI files that would be
    replaced, a security role without MANAGE GRANTS, a large project (>200 models) or incremental models.
+5. **Checkpoint: confirm the findings before the interview.** Ask with `ask_user_question`:
+   "Is anything missing, wrong, or out of scope (projects, databases, roles, warehouses, or CI
+   that must not be touched)?" Update the summary with their corrections and exclusions, restate
+   it, and use the corrected version as the source for every interview default. Do not start the
+   interview until the customer agrees the summary reflects what is migrating.
 
 ### Step 2: Interview
 Follow `references/interview.md`. Ask with `ask_user_question`, at most 4 questions per call,
