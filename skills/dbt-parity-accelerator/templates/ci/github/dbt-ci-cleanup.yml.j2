@@ -1,0 +1,50 @@
+name: dbt CI cleanup
+
+# When a PR is merged or closed, drop its CI schema and its dbt project object.
+# Mirrors the database selection in dbt-ci.yml.
+
+on:
+  pull_request:
+    types: [closed]
+    branches: [[ '[' ]][% for e in environments %][[ e.branch ]][% if not loop.last %], [% endif %][% endfor %][[ ']' ]]
+    paths: ['[[ dbt.project_dir ]]/**']
+
+permissions:
+  id-token: write
+  contents: read
+
+# Same group as dbt-ci.yml: closing the PR cancels any CI run still building into the
+# schema, so it can't recreate [[ ci.pr_schema_prefix ]]<n> after the drop.
+concurrency:
+  group: dbt-ci-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+env:
+  SNOWFLAKE_ACCOUNT: [[ account ]]
+
+jobs:
+  drop-ci-objects:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve CI database
+        id: ctx
+        env:
+          HEAD_REF: ${{ github.head_ref }}
+        run: |
+          case "$HEAD_REF" in
+[%- for e in ci_envs if e.name != default_ci_env.name %]
+            [[ e.branch ]]) echo "ci_db=[[ e.database.name ]]" >> "$GITHUB_OUTPUT" ;;
+[%- endfor %]
+            *) echo "ci_db=[[ default_ci_env.database.name ]]" >> "$GITHUB_OUTPUT" ;;
+          esac
+
+      - name: Set up Snowflake CLI
+        uses: snowflakedb/snowflake-actions@v3
+        with:
+          use-oidc: true
+          cli-version: "[[ cli_version ]]"
+
+      - name: Drop CI schema and dbt project object
+        run: |
+          snow sql -x -q "DROP SCHEMA IF EXISTS ${{ steps.ctx.outputs.ci_db }}.[[ ci.pr_schema_prefix ]]${{ github.event.pull_request.number }}"
+          snow sql -x -q "DROP DBT PROJECT IF EXISTS ${{ steps.ctx.outputs.ci_db }}.[[ ci.schema ]].[[ dbt.object_name ]]_CI_PR_${{ github.event.pull_request.number }}"

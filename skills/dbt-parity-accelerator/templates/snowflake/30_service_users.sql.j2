@@ -1,0 +1,23 @@
+-- Batch 30: CI/CD service users, one per pipeline identity, each holding exactly one role.
+-- Auth: [[ git.ci_auth ]][% if git.ci_auth == 'oidc' %] (workload identity, no stored secrets)[% endif %].
+USE ROLE [[ admin_roles.security ]];
+[%- for u in service_users %]
+
+CREATE USER IF NOT EXISTS [[ u.name ]]
+    TYPE = SERVICE
+    DEFAULT_ROLE = [[ u.role ]]
+    DEFAULT_WAREHOUSE = [[ warehouse.name ]]
+    COMMENT = '[[ u.comment ]]'
+[%- if git.ci_auth == 'oidc' %]
+    WORKLOAD_IDENTITY = (
+        TYPE = OIDC
+        ISSUER = '[[ oidc_issuer ]]'
+        SUBJECT = '[[ u.subject ]]'
+    );
+[%- else %];
+-- Key-pair auth: generate a key pair, then run (public key only, never the private key):
+-- ALTER USER [[ u.name ]] SET RSA_PUBLIC_KEY = '<public key body>';
+-- Store the private key as a secret in [[ git.provider ]] named SNOWFLAKE_PRIVATE_KEY_[[ u.env | upper ]].
+[%- endif %]
+GRANT ROLE [[ u.role ]] TO USER [[ u.name ]];
+[%- endfor %]

@@ -1,0 +1,32 @@
+[[ dbt.profile_name ]]:
+  target: [[ environments[0].target ]]
+  outputs:
+[%- for e in environments %]
+[%- if e.read_role %]
+    # Only the CD service user for [[ e.branch ]] holds [[ e.role.name ]]; humans hold
+    # [[ e.read_role.name ]], so a human-initiated [[ e.name ]] build fails on role.
+[%- endif %]
+    [[ e.target ]]:
+      type: snowflake
+      account: "not needed"
+      user: "not needed"
+      role: [[ e.role.name ]]
+      warehouse: [[ warehouse.name ]]
+      database: [[ e.database.name ]]
+      schema: "{{ env_var('DBT_SCHEMA', '[[ dbt.object_schema ]]') }}"
+      threads: [[ dbt.threads ]]
+[%- endfor %]
+[%- if ci.enabled %]
+    # Slim CI targets: builds land in a per-PR schema (DBT_SCHEMA=[[ ci.pr_schema_prefix ]]<n>).
+[%- for e in ci_envs %]
+    [[ e.ci_target ]]:
+      type: snowflake
+      account: "not needed"
+      user: "not needed"
+      role: [[ ci.role ]]
+      warehouse: [[ warehouse.name ]]
+      database: [[ e.database.name ]]
+      schema: "{{ env_var('DBT_SCHEMA', '[[ ci.schema ]]') }}"
+      threads: [[ dbt.threads ]]
+[%- endfor %]
+[%- endif %]

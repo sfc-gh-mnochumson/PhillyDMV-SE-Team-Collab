@@ -1,0 +1,32 @@
+# Fixture: brownfield on Azure DevOps. Existing roles/DBs adopted, one ACCOUNTADMIN-owned DB,
+# a pre-existing dbt object name, dbt packages (EAI), an extra DBT_ var, and a scheduled prod run.
+version: 1
+account: CONTOSO-PROD
+git:
+  provider: azure
+  repo: contoso/DataPlatform/dbt
+  ci_auth: keypair
+dbt:
+  project_dir: dbt/contoso
+  profile_name: contoso
+  object_name: CONTOSO_TRANSFORM      # found by SHOW DBT PROJECTS; reused, not renamed
+  object_schema: DBT
+  extra_env_vars:
+    DBT_SOURCE_DB: {default: RAW, dev: RAW_DEV}
+warehouse: {name: ETL_WH, adopt: true}
+admin_roles: {objects: SYSADMIN, security: USERADMIN}
+environments:
+  - {name: dev, branch: dev, target: dev, env_yml_env: dev, hosts_ci: true,
+     database: {name: EDW_DEV, adopt: true}, role: {name: EDW_DEV_ENGINEER, adopt: true}}
+  - {name: test, branch: release, target: test, env_yml_env: test, hosts_ci: true,
+     database: {name: EDW_TEST, adopt: true, owner_role: ACCOUNTADMIN}, role: {name: EDW_TEST_ENGINEER, adopt: true}}
+  - {name: prod, branch: master, target: prod, env_yml_env: prod,
+     database: {name: EDW, adopt: true}, role: {name: DBT_PROD_DEPLOYER},
+     read_role: {name: ANALYST, adopt: true}}
+ci: {enabled: true, role: DBT_PR_VALIDATOR, schema: DBT_CI, env_yml_env: pr, pr_schema_prefix: PR_}
+service_user_prefix: SVC_ADO_DBT_
+sources:
+  - {database: RAW, schemas: [ERP, CRM]}
+  - {database: RAW_DEV, schemas: [ERP, CRM]}
+packages: {needs_eai: true, eai_name: DBT_HUB_EAI, network_rule: DBT_HUB_RULE, hosts: [hub.getdbt.com, codeload.github.com]}
+schedule: {enabled: true, environment: prod, cron: "0 5 * * * America/Chicago"}

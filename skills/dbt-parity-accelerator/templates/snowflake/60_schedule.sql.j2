@@ -1,0 +1,15 @@
+-- Batch 60: scheduled [[ schedule.environment ]] run. The task lives in the same schema as the project object.
+-- Created SUSPENDED; resume it only after the first CD deploy succeeds.
+USE ROLE [[ sched_env.role.name ]];
+
+CREATE TASK IF NOT EXISTS [[ sched_env.database.name ]].[[ dbt.object_schema ]].[[ dbt.object_name ]]_SCHEDULED_RUN
+    WAREHOUSE = [[ warehouse.name ]]
+    SCHEDULE = 'USING CRON [[ schedule.cron ]]'
+    COMMENT = 'Scheduled dbt build of [[ dbt.object_name ]] ([[ schedule.environment ]])'
+AS
+    EXECUTE DBT PROJECT [[ sched_env.database.name ]].[[ dbt.object_schema ]].[[ dbt.object_name ]]
+        ARGS = 'build --target [[ sched_env.target ]]'
+        ENVIRONMENT = '[[ sched_env.env_yml_env ]]';
+
+-- After verifying: ALTER TASK [[ sched_env.database.name ]].[[ dbt.object_schema ]].[[ dbt.object_name ]]_SCHEDULED_RUN RESUME;
+-- Requires EXECUTE TASK on the account for [[ sched_env.role.name ]] (granted by ACCOUNTADMIN).

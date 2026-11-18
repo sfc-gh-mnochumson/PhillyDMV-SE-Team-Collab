@@ -1,0 +1,61 @@
+-- Batch 20: grants. GRANT is idempotent, so this batch is safe to re-run.
+[%- for s in sources %]
+[%- if s.shared %]
+
+USE ROLE [[ s.owner_role ]];  -- shared/imported database: only its owner can grant
+[%- for e in environments %]
+GRANT IMPORTED PRIVILEGES ON DATABASE [[ s.database ]] TO ROLE [[ e.role.name ]];
+[%- endfor %]
+[%- if ci.enabled %]
+GRANT IMPORTED PRIVILEGES ON DATABASE [[ s.database ]] TO ROLE [[ ci.role ]];
+[%- endif %]
+[%- endif %]
+[%- endfor %]
+
+USE ROLE [[ admin_roles.security ]];
+[%- for s in sources if not s.shared %]
+
+-- Source: [[ s.database ]]
+[%- for r in all_build_roles %]
+GRANT USAGE ON DATABASE [[ s.database ]] TO ROLE [[ r ]];
+[%- for sch in s.schemas %]
+GRANT USAGE ON SCHEMA [[ s.database ]].[[ sch ]] TO ROLE [[ r ]];
+GRANT SELECT ON ALL TABLES IN SCHEMA [[ s.database ]].[[ sch ]] TO ROLE [[ r ]];
+GRANT SELECT ON ALL VIEWS IN SCHEMA [[ s.database ]].[[ sch ]] TO ROLE [[ r ]];
+GRANT SELECT ON FUTURE TABLES IN SCHEMA [[ s.database ]].[[ sch ]] TO ROLE [[ r ]];
+GRANT SELECT ON FUTURE VIEWS IN SCHEMA [[ s.database ]].[[ sch ]] TO ROLE [[ r ]];
+[%- endfor %]
+[%- endfor %]
+[%- endfor %]
+[% for e in environments %]
+-- Environment [[ e.name ]]: [[ e.role.name ]] builds into [[ e.database.name ]]
+GRANT USAGE, OPERATE ON WAREHOUSE [[ warehouse.name ]] TO ROLE [[ e.role.name ]];
+GRANT USAGE, CREATE SCHEMA ON DATABASE [[ e.database.name ]] TO ROLE [[ e.role.name ]];
+GRANT USAGE, CREATE TABLE, CREATE VIEW, CREATE DYNAMIC TABLE, CREATE DBT PROJECT
+    ON SCHEMA [[ e.database.name ]].[[ dbt.object_schema ]] TO ROLE [[ e.role.name ]];
+[%- if e.read_role %]
+GRANT USAGE ON DATABASE [[ e.database.name ]] TO ROLE [[ e.read_role.name ]];
+GRANT USAGE ON SCHEMA [[ e.database.name ]].[[ dbt.object_schema ]] TO ROLE [[ e.read_role.name ]];
+GRANT SELECT ON ALL TABLES IN SCHEMA [[ e.database.name ]].[[ dbt.object_schema ]] TO ROLE [[ e.read_role.name ]];
+GRANT SELECT ON ALL VIEWS IN SCHEMA [[ e.database.name ]].[[ dbt.object_schema ]] TO ROLE [[ e.read_role.name ]];
+GRANT SELECT ON FUTURE TABLES IN SCHEMA [[ e.database.name ]].[[ dbt.object_schema ]] TO ROLE [[ e.read_role.name ]];
+GRANT SELECT ON FUTURE VIEWS IN SCHEMA [[ e.database.name ]].[[ dbt.object_schema ]] TO ROLE [[ e.read_role.name ]];
+[%- endif %]
+[% endfor %]
+[%- if ci.enabled %]
+-- CI role: compute, CI_PR_* schemas in CI databases, read-only on every environment (for --defer)
+GRANT USAGE, OPERATE ON WAREHOUSE [[ warehouse.name ]] TO ROLE [[ ci.role ]];
+[%- for e in environments %]
+[%- if e.hosts_ci %]
+GRANT USAGE, CREATE SCHEMA ON DATABASE [[ e.database.name ]] TO ROLE [[ ci.role ]];
+GRANT USAGE, CREATE DBT PROJECT ON SCHEMA [[ e.database.name ]].[[ ci.schema ]] TO ROLE [[ ci.role ]];
+[%- else %]
+GRANT USAGE ON DATABASE [[ e.database.name ]] TO ROLE [[ ci.role ]];
+[%- endif %]
+GRANT USAGE ON SCHEMA [[ e.database.name ]].[[ dbt.object_schema ]] TO ROLE [[ ci.role ]];
+GRANT SELECT ON ALL TABLES IN SCHEMA [[ e.database.name ]].[[ dbt.object_schema ]] TO ROLE [[ ci.role ]];
+GRANT SELECT ON ALL VIEWS IN SCHEMA [[ e.database.name ]].[[ dbt.object_schema ]] TO ROLE [[ ci.role ]];
+GRANT SELECT ON FUTURE TABLES IN SCHEMA [[ e.database.name ]].[[ dbt.object_schema ]] TO ROLE [[ ci.role ]];
+GRANT SELECT ON FUTURE VIEWS IN SCHEMA [[ e.database.name ]].[[ dbt.object_schema ]] TO ROLE [[ ci.role ]];
+[%- endfor %]
+[%- endif %]

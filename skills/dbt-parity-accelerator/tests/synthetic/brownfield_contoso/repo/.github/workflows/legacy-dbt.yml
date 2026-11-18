@@ -1,0 +1,8 @@
+# Pre-existing pipeline (Airflow-era); the accelerator must flag it, not silently overwrite it.
+name: legacy dbt run
+on: {push: {branches: [main]}}
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "dbt run via Airflow trigger"

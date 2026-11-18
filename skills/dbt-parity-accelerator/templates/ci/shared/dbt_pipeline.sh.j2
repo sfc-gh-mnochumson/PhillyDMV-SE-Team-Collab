@@ -1,0 +1,104 @@
+#!/usr/bin/env bash
+# Provider-neutral dbt Projects on Snowflake pipeline logic (rendered by the accelerator).
+# Same behavior as the GitHub workflows. Requires the Snowflake CLI (snow) [[ cli_version ]]
+# and SNOWFLAKE_* connection env vars set by the calling pipeline (used via `-x`).
+#
+#   dbt_pipeline.sh ci      <head_branch> <base_branch> <pr_number>
+#   dbt_pipeline.sh cd      <branch>
+#   dbt_pipeline.sh cleanup <head_branch> <pr_number>
+# Never deploys with --force: that wipes run history, which Slim CI uses as state.
+set -euo pipefail
+
+PROJECT_DIR="${PROJECT_DIR:-[[ dbt.project_dir ]]}"
+
+ci_db_for_head() {
+  case "$1" in
+[%- for e in ci_envs if e.name != default_ci_env.name %]
+    [[ e.branch ]]) echo "[[ e.database.name ]] [[ e.ci_target ]]" ;;
+[%- endfor %]
+    *) echo "[[ default_ci_env.database.name ]] [[ default_ci_env.ci_target ]]" ;;
+  esac
+}
+
+env_for_branch() {
+  case "$1" in
+[%- for e in environments %]
+    [[ e.branch ]]) echo "[[ e.database.name ]] [[ e.target ]] [[ e.env_yml_env ]]" ;;
+[%- endfor %]
+    *) echo "Unsupported branch: $1" >&2; exit 1 ;;
+  esac
+}
+
+cmd="${1:?usage: dbt_pipeline.sh ci|cd|cleanup ...}"; shift
+
+case "$cmd" in
+  ci)
+    head="$1"; base="$2"; pr="$3"
+    read -r ci_db ci_target < <(ci_db_for_head "$head")
+    read -r base_db _ _ < <(env_for_branch "$base")
+    state_obj="${base_db}.[[ dbt.object_schema ]].[[ dbt.object_name ]]"
+    ci_obj="${ci_db}.[[ ci.schema ]].[[ dbt.object_name ]]_CI_PR_${pr}"
+    ci_schema="[[ ci.pr_schema_prefix ]]${pr}"
+
+    snow connection test -x
+    snow dbt deploy "[[ dbt.object_name ]]_CI_PR_${pr}" --source "$PROJECT_DIR" \
+      --database "$ci_db" --schema [[ ci.schema ]] \
+      --default-target "$ci_target" --default-env [[ ci.env_yml_env ]] \
+[%- if packages.needs_eai %]
+      --external-access-integration [[ packages.eai_name ]] \
+[%- endif %]
+      --no-auto-compile -x
+
+    set +e
+    out=$(snow sql -x --format json -q \
+      "SELECT SYSTEM\$DBT_GET_LAST_SUCCESSFUL_RUN_TARGET('${state_obj}') AS STATE_PATH" 2>&1)
+    rc=$?
+    set -e
+    path=$(echo "$out" | python3 -c 'import sys, json
+try:
+    print(json.load(sys.stdin)[0]["STATE_PATH"] or "")
+except Exception:
+    print("")')
+
+    if [ $rc -eq 0 ] && [ -n "$path" ]; then
+      echo "Slim CI: deferring to ${state_obj}"
+      snow dbt execute -x --env [[ ci.env_yml_env ]] \
+        --env-vars "{\"DBT_SCHEMA\": \"${ci_schema}\"}" \
+        --import "SYSTEM\$DBT_GET_LAST_SUCCESSFUL_RUN_TARGET('${state_obj}') AS 'state'" \
+        "$ci_obj" build --target "$ci_target" --state ./imports/state --defer --select state:modified+
+    else
+      echo "WARNING: no successful run of ${state_obj} in the last 14 days; running a full build."
+      snow dbt execute -x --env [[ ci.env_yml_env ]] \
+        --env-vars "{\"DBT_SCHEMA\": \"${ci_schema}\"}" \
+        "$ci_obj" build --target "$ci_target"
+    fi
+    ;;
+
+  cd)
+    branch="$1"
+    read -r db target env < <(env_for_branch "$branch")
+    obj="${db}.[[ dbt.object_schema ]].[[ dbt.object_name ]]"
+    snow connection test -x
+    snow dbt deploy [[ dbt.object_name ]] --source "$PROJECT_DIR" \
+      --database "$db" --schema [[ dbt.object_schema ]] \
+      --default-target "$target" --default-env "$env" \
+[%- if packages.needs_eai %]
+      --external-access-integration [[ packages.eai_name ]] \
+[%- endif %]
+      -x
+[%- if ci.enabled %]
+    snow sql -x -q "GRANT MONITOR ON DBT PROJECT ${obj} TO ROLE [[ ci.role ]]"
+[%- endif %]
+    snow dbt execute -x --env "$env" --env-vars '{"DBT_SCHEMA": "[[ dbt.object_schema ]]"}' \
+      "$obj" build --target "$target"
+    ;;
+
+  cleanup)
+    head="$1"; pr="$2"
+    read -r ci_db _ < <(ci_db_for_head "$head")
+    snow sql -x -q "DROP SCHEMA IF EXISTS ${ci_db}.[[ ci.pr_schema_prefix ]]${pr}"
+    snow sql -x -q "DROP DBT PROJECT IF EXISTS ${ci_db}.[[ ci.schema ]].[[ dbt.object_name ]]_CI_PR_${pr}"
+    ;;
+
+  *) echo "unknown command: $cmd" >&2; exit 2 ;;
+esac

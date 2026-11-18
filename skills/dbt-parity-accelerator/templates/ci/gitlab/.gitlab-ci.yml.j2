@@ -1,0 +1,55 @@
+# dbt Projects on Snowflake CI/CD for GitLab (rendered by the accelerator).
+# STATUS: PILOT. Not yet run end to end; validate on a test project before relying on it.
+# Auth: GitLab OIDC id_token -> Snowflake workload identity (service users from batch 30).
+# Each job's SUBJECT must match the service user's SUBJECT, e.g.
+#   project_path:[[ git.repo ]]:ref_type:branch:ref:<branch>
+# Merge-request pipelines run on the source branch ref, so the CI user's SUBJECT is set
+# to a custom sub claim (see the Snowflake WIF docs, "single user for multiple ... GitLab environments").
+
+stages: [ci, cd]
+
+variables:
+  SNOWFLAKE_ACCOUNT: [[ account ]]
+  SNOWFLAKE_AUTHENTICATOR: WORKLOAD_IDENTITY
+  SNOWFLAKE_WORKLOAD_IDENTITY_PROVIDER: OIDC
+  PROJECT_DIR: [[ dbt.project_dir ]]
+
+.snow:
+  image: python:3.11-slim
+  id_tokens:
+    SNOWFLAKE_TOKEN:
+      aud: snowflakecomputing.com
+  before_script:
+    - pip install --quiet "snowflake-cli==[[ cli_version ]]"
+    - chmod +x ci/dbt_pipeline.sh
+
+slim-ci:
+  extends: .snow
+  stage: ci
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_TARGET_BRANCH_NAME =~ /^([% for e in environments %][[ e.branch ]][% if not loop.last %]|[% endif %][% endfor %])$/'
+      changes: ["[[ dbt.project_dir ]]/**/*"]
+  resource_group: dbt-ci-$CI_MERGE_REQUEST_IID
+  script:
+    - ci/dbt_pipeline.sh ci "$CI_MERGE_REQUEST_SOURCE_BRANCH_NAME" "$CI_MERGE_REQUEST_TARGET_BRANCH_NAME" "$CI_MERGE_REQUEST_IID"
+
+dbt-cd:
+  extends: .snow
+  stage: cd
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH =~ /^([% for e in environments %][[ e.branch ]][% if not loop.last %]|[% endif %][% endfor %])$/'
+      changes: ["[[ dbt.project_dir ]]/**/*"]
+  resource_group: dbt-cd-$CI_COMMIT_BRANCH
+  script:
+    - ci/dbt_pipeline.sh cd "$CI_COMMIT_BRANCH"
+
+# GitLab has no "MR closed" pipeline event. Run this on a schedule or manually with
+# MR_IID and MR_SOURCE_BRANCH set, or call it from a merge-request webhook.
+dbt-ci-cleanup:
+  extends: .snow
+  stage: ci
+  rules:
+    - if: '$MR_IID && $MR_SOURCE_BRANCH'
+      when: manual
+  script:
+    - ci/dbt_pipeline.sh cleanup "$MR_SOURCE_BRANCH" "$MR_IID"
